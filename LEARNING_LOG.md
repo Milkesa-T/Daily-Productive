@@ -34,3 +34,66 @@ Use this file to record what you learned each day, key mental models, architectu
 - `HabitBase` was accidentally nested *inside* `TaskResponse` due to wrong indentation — in Python, indentation defines scope entirely.
 - `0.0-100` in Python is arithmetic (evaluates to `-100.0`), not a range declaration. Ranges require `Field(ge=0.0, le=100.0)`.
 - Accidentally imported `passlib`, `FastAPI`, and `unicodedata` in a schema file — schemas are pure data contracts and should not import web framework or utility libraries.
+
+---
+
+## Day 2: Routers and Project Structure + `/health` Endpoint
+
+### Key Concepts Learned
+- **Modular Routing (`APIRouter`)**: Splitting endpoints into domain-specific routers (`app/routers/`) prevents the main application file from becoming a monolithic mess and allows independent prefixing and tagging.
+- **Application Factory Pattern**: `FastAPI()` instantiated centrally in `app/main.py` serves as the central orchestrator where routers, middleware, and exception handlers are plugged in via `app.include_router()`.
+- **Environment Management (`pydantic-settings`)**: `BaseSettings` automatically reads environment variables and `.env` files into strongly-typed attributes at runtime.
+- **Auto-generated Documentation**: FastAPI inspects route decorators, response schemas, and type annotations to automatically build and serve OpenAPI 3.1 specifications (`/openapi.json`) and interactive Swagger UI (`/docs`).
+
+### Behind the Scenes / Architecture Insights
+- `APIRouter` does not create a web server; it registers route definitions that are only mounted when `app.include_router(...)` is invoked.
+- `.env` files must live at the **project working directory** from where `uvicorn` is executed, not inside subpackages like `app/.env`.
+
+### What Confused / Mistakes Made
+- Typo in method invocation: `app.includ_router` instead of `app.include_router`.
+- Syntax error in dict return: key-value pairs missing colons/commas, and variable interpolation accidentally placed inside string literals.
+- Naming of Python package initialization: created `___init__.py` (3 underscores) which Python did not recognize as a package module until fixed to `__init__.py`.
+- Misspelled datetime formatting method: `isformat()` instead of standard `isoformat()`.
+
+---
+
+## Day 3: Postgres (Supabase) + SQLAlchemy Models
+
+### Key Concepts Learned
+- **ORM vs Schemas**: SQLAlchemy models (`app/models/models.py`) represent relational database tables and persist state to disk; Pydantic models (`app/schemas/schema.py`) validate, parse, and serialize in-flight HTTP JSON data.
+- **Engine vs Session**:
+  - `create_engine`: Maintains a pool of physical database socket connections.
+  - `sessionmaker` / `SessionLocal`: Factory creating short-lived, transaction-scoped sessions for individual HTTP request lifecycles.
+  - Dependency generator `get_db()` with `yield` ensures database connections are cleanly closed via `finally: db.close()`.
+- **Declarative Base**: `Base = declarative_base()` registers all subclasses (Task, Habit, Goal) to a shared metadata registry (`Base.metadata`).
+
+### Behind the Scenes / Architecture Insights
+- **Supabase Networking (IPv6 vs IPv4)**:
+  - Supabase's direct database hostname (`db.<project-ref>.supabase.co`) resolves to an IPv6-only address.
+  - Machines or ISP networks lacking native IPv6 fail with `could not translate host name ... to address: Name or service not known`.
+  - The solution is routing through the Supabase Connection Pooler (`aws-X-region.pooler.supabase.com:5432`) which provides dual-stack IPv4/IPv6 support.
+- **URL Percent-Encoding in DSNs**: Passwords with special characters (e.g. `&`, `@`, `#`) will break URI parser delimiters unless encoded (`&` -> `%26`).
+
+### What Confused / Mistakes Made
+- Missing audit fields: `Habit` and `Goal` models initially lacked `created_at` and `updated_at` columns, which would cause runtime serialization errors when mapped to `Response` schemas.
+- Foreign import pollution: Accidentally imported `from google.auth import default` into `models.py`.
+
+---
+
+## Day 4: Database Migrations with Alembic
+
+### Key Concepts Learned
+- **Database Version Control**: Alembic tracks schema evolutionary history through linear or branching migration scripts inside `alembic/versions/`.
+- **Why `create_all()` is insufficient**: `Base.metadata.create_all()` only issues `CREATE TABLE IF NOT EXISTS`. It cannot modify existing column types, add new constrained columns, remove tables, or support downgrades/rollbacks.
+- **Autogenerate Mechanism**: Alembic compares Python SQLAlchemy metadata (`target_metadata = Base.metadata`) against the live PostgreSQL catalog and generates differential operations (`op.create_table`, `op.add_column`).
+- **Migration Execution**:
+  - `alembic revision --autogenerate -m "..."` creates the revision file.
+  - `alembic upgrade head` executes unapplied migrations and updates the `alembic_version` state table in Postgres.
+  - `alembic current` inspects the active database revision hash.
+
+### Behind the Scenes / Architecture Insights
+- Dynamic configuration in `alembic/env.py`: Pulling `settings.database_url` programmatically via `config.set_main_option("sqlalchemy.url", ...)` avoids leaking production credentials into static `alembic.ini` files.
+- Empty autogenerate migrations (`pass`): If tables were already created in a previous manual step or via `create_all()`, Alembic detects zero schema delta and produces an empty revision. Running `alembic upgrade head` stamps the database so future changes start from a known baseline.
+
+### What Confused / Mistakes Made
+- Seeing an empty `upgrade()` function with only `pass` initially seemed like an error, but it correctly represented that the live Supabase database and models were already in complete parity.

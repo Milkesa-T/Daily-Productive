@@ -9,9 +9,9 @@ Personal productivity platform built from scratch: FastAPI, PostgreSQL (Supabase
 | Day | Task | Deliverable | Status | Planned hrs | Actual hrs | Notes / What I Learned |
 |:---:|:---|:---|:---:|:---:|:---:|:---|
 | **D1** | Python typing + Pydantic models for Task, Habit, Goal | Pydantic schemas validating models with custom validators | Done | 2.5 - 3.0 | ~3.5 | Pydantic v2 field_validator vs model_validator; Base/Create/Update/Response pattern; from_attributes=True for ORM; inverted validator bug; why schema separation is a security boundary not just style |
-| **D2** | Routers and project structure, `/health` endpoint | Modular FastAPI app structure with working `/health` route | Not started | 2.5 - 3.0 | - | - |
-| **D3** | Postgres (Supabase) + SQLAlchemy models | Database connection engine, session factory, ORM models | Not started | 2.5 - 3.0 | - | - |
-| **D4** | Alembic migrations | Alembic configured, initial migration generated & executed | Not started | 2.5 - 3.0 | - | - |
+| **D2** | Routers and project structure, `/health` endpoint | Modular FastAPI app structure with working `/health` route | Done | 2.5 - 3.0 | ~2.5 | APIRouter modular routing; app factory pattern; Pydantic BaseSettings for .env management; OpenAPI/Swagger auto-generation; ISO-8601 formatting |
+| **D3** | Postgres (Supabase) + SQLAlchemy models | Database connection engine, session factory, ORM models | Done | 2.5 - 3.0 | ~3.0 | SQLAlchemy engine vs SessionLocal lifecycle; declarative Base; ORM vs Pydantic separation; Supabase IPv6 vs IPv4 connection pooler routing; percent-encoding credentials in DSNs |
+| **D4** | Alembic migrations | Alembic configured, initial migration generated & executed | Done | 2.5 - 3.0 | ~2.0 | Schema versioning; autogenerate diffing mechanism; dynamic DB URL injection in env.py; alembic_version stamp table; why create_all() is insufficient for production schema evolution |
 | **D5** | CRUD for tasks and habits | Working endpoints with status codes, db dependency injection | Not started | 2.5 - 3.0 | - | - |
 | **D6** | CRUD for goals + validation and error handling | Goals CRUD, custom HTTP exceptions, relational validation | Not started | 2.5 - 3.0 | - | - |
 | **D7** | JWT auth + pytest tests (5+ passing) | User registration/login, password hashing, 5+ passing tests | Not started | 2.5 - 3.0 | - | - |
