@@ -1,6 +1,14 @@
 from fastapi import FastAPI
 from app.core.config import settings
 from app.routers import health
+from app.core.database import engine, Base
+from app.models import models 
+try:
+    print("connecting to supa database ")
+    Base.metadata.create_all(bind=engine)
+    print ("database table sync successfully")
+except Exception as e:
+    print (f"database connection failed:{e}")
 
 app = FastAPI(
     title=settings.app_name,
