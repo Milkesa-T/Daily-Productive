@@ -147,3 +147,20 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Correctly caught date logic error: {e.errors()[0]['msg']}")
     print("\nAll schema validations passed!")
+
+class UserCreate(BaseModel):
+    email: str
+    password: str
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    is_active:bool
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    email: Optional[str] = None
