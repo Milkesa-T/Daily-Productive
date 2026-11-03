@@ -119,3 +119,28 @@ Use this file to record what you learned each day, key mental models, architectu
 ### What Confused / Mistakes Made
 - Routers were initially imported into `app/main.py` but not registered with `app.include_router(...)`. They did not appear in `/docs` until mounted.
 - Understanding why `exclude_unset=True` is critical: without it, Pydantic defaults optional unprovided attributes to `None`, which would overwrite existing database values during partial updates.
+
+---
+
+## Day 6: CRUD for Goals + Validation and Error Handling
+
+### Key Concepts Learned
+- **Centralized Custom Exceptions**: Subclassing `HTTPException` into domain-specific exceptions like `EntityNotFoundException(entity_name, entity_id)` and `BusinessRuleViolationException(detail)` provides standardized HTTP status codes (`404` and `400`) and uniform error response structures across the codebase without redundant boilerplate.
+- **Cross-Field Partial Update Validation**:
+  - In a `PATCH` request, clients typically submit only a subset of fields (e.g. updating `start_date` alone).
+  - Pydantic schema-level `@model_validator` cannot reliably validate relational or temporal constraints against existing state because it only has access to payload fields.
+  - Solving this requires merging the incoming update payload with existing persisted database values:
+    ```python
+    merged_start = update_data.get("start_date", db_goal.start_date)
+    merged_target = update_data.get("target_date", db_goal.target_date)
+    validate_goal_dates(merged_start, merged_target)
+    ```
+    This guarantees that partial updates can never leave the database in an invalid state where `target_date < start_date`.
+- **Clean RESTful API Organization**: Mounting `goals.router` alongside `health`, `tasks`, and `habits` under distinct OpenAPI tags provides structured, self-documenting interactive documentation in Swagger UI (`/docs`).
+
+### Behind the Scenes / Architecture Insights
+- **Domain Invariants**: Business rules (like date integrity) belong at both the gateway boundary (Pydantic schemas for initial creation) and the service/router boundary (for mutations against existing state).
+- Subclassing `HTTPException` allows FastAPI to catch exceptions naturally through its built-in exception handler pipeline without requiring custom middleware unless customized JSON schemas are demanded.
+
+### What Confused / Mistakes Made
+- Python casing convention: `sqlalchemy.orm.session` is a module, whereas `Session` (capitalized) is the class type used for type annotations. While Python's type annotations do not strictly enforce runtime instantiation types, adhering to `Session` avoids linter warnings and IDE confusion.
