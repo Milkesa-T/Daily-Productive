@@ -1,8 +1,9 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.webhook import trigger_n8n_webhook
 from app.models.models import Task
 from app.schemas.schema import TaskCreate, TaskResponse, TaskUpdate
 
@@ -10,12 +11,22 @@ router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
 # 1. CREATE
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
-def create_task(task_in: TaskCreate, db: Session = Depends(get_db)):
+def create_task(task_in: TaskCreate,  background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     # Convert validated Pydantic fields directly into an ORM object
     new_task = Task(**task_in.model_dump())
     db.add(new_task)
     db.commit()
     db.refresh(new_task)  # Loads system assigned ID and timestamps
+    if new_task.due_date:
+        payload = {
+            "event": "task_created",
+            "task_id": new_task.id,
+            "title": new_task.title,
+            "description": new_task.description,
+            "due_date": new_task.due_date.isoformat(),
+            "priority_level": new_task.priority_level,
+        }
+        background_tasks.add_task(trigger_n8n_webhook, payload)
     return new_task
 
 # 2. READ ALL

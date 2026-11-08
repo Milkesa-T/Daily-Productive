@@ -201,3 +201,30 @@ Use this file to record what you learned each day, key mental models, architectu
 - **Windows File Locking with `npx` (`EBUSY` / `EPERM`)**: On Windows, `npx n8n` downloads packages to a temporary cache folder (`AppData\Local\npm-cache\_npx`), where active background locks prevent cleanup routines from removing node directories. Overcome by installing n8n globally (`npm install -g n8n`).
 - **Response Format Mismatch**: Configuring `Respond With: JSON` while passing stringified expressions like `{{ JSON.stringify($json) }}` creates invalid response bodies. Switching to `First Incoming Item` resolved the payload serialization cleanly.
 - **Testing 404 Disorientation**: Believing the webhook was broken after receiving a `404 Not Registered` on subsequent requests; recognized that test mode endpoints auto-expire after exactly 1 call unless published to production.
+
+---
+
+## Day 9: FastAPI Outgoing Webhooks + Google Calendar Automation
+
+### Key Concepts Learned
+- **FastAPI `BackgroundTasks`**:
+  - Offloads I/O-bound tasks (like external HTTP webhook requests) to execute *after* sending the HTTP response.
+  - Keeps API response latency ultra-low (~10-50ms) instead of blocking the client waiting for downstream services.
+- **Resilient Webhook Dispatching (`httpx`)**:
+  - `httpx.Client(timeout=5.0)` prevents worker thread starvation if n8n is unreachable.
+  - Wrapping network calls in `try...except httpx.RequestError` ensures backend core operations (task creation in database) never fail even if automation endpoints are offline.
+- **Google Cloud OAuth 2.0 Credentials Pipeline**:
+  - Configuring OAuth Consent Screen, scopes, and Test Users whitelist (`milkesataye0450@gmail.com`).
+  - Setting Authorized Redirect URIs matching local n8n callback (`http://localhost:5678/rest/oauth2-credential/callback`).
+  - Handling unverified developer app warnings safely via Advanced settings.
+- **n8n Event Mapping to Google Calendar**:
+  - Mapping incoming webhook JSON payload (`body.title`, `body.due_date`, `body.description`) directly into Google Calendar Event Create parameters.
+  - Formatting ISO-8601 timestamps and calculating dynamic end times (`new Date(start.getTime() + 60*60*1000)`).
+
+### Behind the Scenes / Architecture Insights
+- **Decoupled Architecture Pattern**: FastAPI focuses strictly on data persistence, validation, and business logic. External third-party integrations (OAuth tokens, calendars, notifications) are completely offloaded to n8n.
+- **Fail-Safe Webhook Execution**: BackgroundTasks guarantee database commits are isolated from webhook delivery status.
+
+### What Confused / Mistakes Made
+- **Google OAuth 403 `access_denied`**: When a Google Cloud project is in Testing mode, unverified accounts cannot sign in unless their exact email is added under the project's **Test users** whitelist.
+- **Datetime Serialization in Payloads**: Native Python `datetime` objects cannot be JSON-serialized directly by `httpx` dictionaries. Must call `.isoformat()` prior to payload dispatch.
