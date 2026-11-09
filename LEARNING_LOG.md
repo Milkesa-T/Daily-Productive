@@ -257,3 +257,25 @@ Use this file to record what you learned each day, key mental models, architectu
 - **`isformat` vs `isoformat`**: Typo calling `.isformat()` on datetime objects caused `AttributeError: 'datetime.datetime' object has no attribute 'isformat'`.
 - **IPv6 ECONNREFUSED**: Seeing `connect ECONNREFUSED ::1:8000` in n8n execution error logs; resolved by specifying IPv4 `http://127.0.0.1:8000/tasks/...`.
 - **Querying Historical Task IDs**: Testing Task 7 (which was created before the HTTP Request callback node was fixed) still yielded `reminder_id: null`. Querying the newly created Task 9 verified the populated Google event ID immediately.
+
+---
+
+## Day 11: Developer Activity Automation — GitHub Polling to Supabase
+
+### Key Concepts Learned
+- **Polling vs Webhook Triggers for Local Development**:
+  - Webhooks require the receiver to have a publicly accessible internet address (or a tunnel like ngrok).
+  - Polling (using n8n Schedule Trigger) initiates outbound HTTP requests from the local server to external APIs (GitHub REST API), completely bypassing NAT and firewall restrictions without requiring reverse proxies.
+- **GitHub REST API v3 Integration**:
+  - Authenticating with Personal Access Tokens (PATs) using `Authorization: Bearer ghp_...` and identifying clients via `User-Agent`.
+  - Fetching commits with pagination query parameters (`?per_page=3`) to prevent flooding downstream databases with historical git trees.
+- **Data Transformation & Array Splitting in n8n**:
+  - When an HTTP node receives a JSON list (an array of commit objects), n8n automatically splits the array into individual execution items.
+  - Downstream nodes (like the FastAPI `POST /tasks` HTTP Request) run sequentially for every commit, extracting first-line commit messages (`$json.commit.message.split('\n')[0]`), commit authors, and direct web URLs (`$json.html_url`).
+
+### Behind the Scenes / Architecture Insights
+- **Unified Domain Model**: Instead of building separate database tables and custom schemas for git commits, Jira tickets, and external feeds, mapping developer activities directly into completed `tasks` (`category: "Development"`, `is_completed: true`) provides a unified timeline and productivity dashboard.
+- **API Boundary Re-use**: Ingesting third-party data through FastAPI's own REST API (`POST /tasks`) ensures all validation rules, timestamps, and ORM triggers are consistently applied, rather than bypassing business logic with direct SQL inserts.
+
+### What Confused / Mistakes Made
+- **n8n Action Categorization**: Searching for "commits" inside n8n's built-in GitHub node showed only issue, PR, and file actions. Solved cleanly by utilizing a direct `HTTP Request` node to `api.github.com/repos/.../commits`, granting complete control over query parameters and pagination.
