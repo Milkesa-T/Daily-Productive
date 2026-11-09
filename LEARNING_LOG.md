@@ -228,3 +228,32 @@ Use this file to record what you learned each day, key mental models, architectu
 ### What Confused / Mistakes Made
 - **Google OAuth 403 `access_denied`**: When a Google Cloud project is in Testing mode, unverified accounts cannot sign in unless their exact email is added under the project's **Test users** whitelist.
 - **Datetime Serialization in Payloads**: Native Python `datetime` objects cannot be JSON-serialized directly by `httpx` dictionaries. Must call `.isoformat()` prior to payload dispatch.
+
+---
+
+## Day 10: Event ID Storage + Bi-directional Update & Delete Synchronization
+
+### Key Concepts Learned
+- **Bi-directional Webhook & Callback Architecture**:
+  - FastAPI dispatches `task_created` ➡️ n8n creates Google Calendar event ➡️ n8n captures Google's generated `id` ➡️ n8n calls `PATCH /tasks/{id}` on FastAPI to store Google's event ID inside `task.reminder_id`.
+  - Closing the loop enables future operations (modifications and cancellations) to target the exact remote calendar event.
+- **Event-Driven Branching with n8n Switch Node**:
+  - Routing single webhook intake into 3 separate execution lanes based on `{{ $json.body.event }}`:
+    - Route 0 (`task_created`): Google Calendar Create ➡️ HTTP Request callback.
+    - Route 1 (`task_updated`): Google Calendar Update targeting `{{ $json.body.reminder_id }}`.
+    - Route 2 (`task_deleted`): Google Calendar Delete targeting `{{ $json.body.reminder_id }}`.
+- **FastAPI Lifecycle Synchronization**:
+  - In `update_task` (PATCH), conditionally dispatching `task_updated` only if `reminder_id` exists and fields affecting calendar events (`title`, `description`, `due_date`) are present in `update_data`.
+  - In `delete_task` (DELETE), dispatching `task_deleted` with the target `reminder_id` before deleting the database row.
+
+### Behind the Scenes / Architecture Insights
+- **Dual-Protocol Loopback Resolution (`localhost` vs `127.0.0.1`)**:
+  - Modern Node.js environments resolve `localhost` to IPv6 `::1` before IPv4 `127.0.0.1`.
+  - If a backend service (like Uvicorn) binds explicitly to `127.0.0.1`, HTTP clients using `localhost` will trigger `ECONNREFUSED ::1:<port>`. Explicitly targeting `127.0.0.1` avoids dual-stack resolution mismatches.
+- **Upstream Node Scoping in n8n**:
+  - In downstream nodes, accessing data from earlier nodes in the chain uses `$('Node Name').first().json` or `$('Node Name').item.json` to extract origin fields (e.g. `task_id` from the initial Webhook).
+
+### What Confused / Mistakes Made
+- **`isformat` vs `isoformat`**: Typo calling `.isformat()` on datetime objects caused `AttributeError: 'datetime.datetime' object has no attribute 'isformat'`.
+- **IPv6 ECONNREFUSED**: Seeing `connect ECONNREFUSED ::1:8000` in n8n execution error logs; resolved by specifying IPv4 `http://127.0.0.1:8000/tasks/...`.
+- **Querying Historical Task IDs**: Testing Task 7 (which was created before the HTTP Request callback node was fixed) still yielded `reminder_id: null`. Querying the newly created Task 9 verified the populated Google event ID immediately.

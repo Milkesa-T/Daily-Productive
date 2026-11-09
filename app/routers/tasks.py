@@ -44,7 +44,7 @@ def get_task_by_id(task_id: int, db: Session = Depends(get_db)):
 
 # 4. UPDATE (PATCH)
 @router.patch("/{task_id}", response_model=TaskResponse)
-def update_task(task_id: int, task_in: TaskUpdate, db: Session = Depends(get_db)):
+def update_task(task_id: int, task_in: TaskUpdate, background_tasks: BackgroundTasks,  db: Session = Depends(get_db)):
     db_task = db.query(Task).filter(Task.id == task_id).first()
     if not db_task:
         raise HTTPException(status_code=404, detail=f"Task with ID {task_id} not found")
@@ -56,15 +56,33 @@ def update_task(task_id: int, task_in: TaskUpdate, db: Session = Depends(get_db)
         
     db.commit()
     db.refresh(db_task)
+    if db_task.reminder_id and any(f in update_data for f in ["title", "description", "due_date"]):
+        payload = {
+            "event": "task_updated",
+            "task_id": db_task.id,
+            "reminder_id": db_task.reminder_id,
+            "title": db_task.title,
+            "description": db_task.description,
+            "due_date": db_task.due_date.isoformat() if db_task.due_date else None ,
+            "priority_level": db_task.priority_level, 
+        }
+        background_tasks.add_task(trigger_n8n_webhook, payload)
+
     return db_task
 
 # 5. DELETE
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_task(task_id: int, db: Session = Depends(get_db)):
+def delete_task(task_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     db_task = db.query(Task).filter(Task.id == task_id).first()
     if not db_task:
         raise HTTPException(status_code=404, detail=f"Task with ID {task_id} not found")
-    
+    if db_task.reminder_id:
+        payload = {
+            "event" : "task_deleted",
+            "task_id": db_task.id,
+            "reminder_id": db_task.reminder_id,     
+        }
+        background_tasks.add_task(trigger_n8n_webhook, payload)
     db.delete(db_task)
     db.commit()
     return None  # HTTP 204 returns no body layout
