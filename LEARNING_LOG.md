@@ -302,3 +302,31 @@ Use this file to record what you learned each day, key mental models, architectu
 ### What Confused / Mistakes Made
 - **Empty Habits Table Blocking Downstream Execution**: When `Get Habits` returned `[]` because no habits had been created yet, the Code node was skipped completely. Fixed by enabling "Always Output Data" on the HTTP nodes and adding a habit via `POST /habits`.
 - **Node Scope Reference Errors**: Referencing `$('Get Habits')` before the node was executed or when node name capitalization differed (`get habits` vs `Get Habits`) triggered reference errors in the Code node.
+
+---
+
+## Day 13: Next.js App Router Setup, CORS, and Client-Side JWT Authentication
+
+### Key Concepts Learned
+- **Next.js 15 App Router & Project Structure**:
+  - Initializing modern React applications with TypeScript, Tailwind CSS, and the App Router pattern (`src/app/`).
+  - Separation of routing pages (`src/app/login/page.tsx`, `src/app/dashboard/page.tsx`) from shared utility libraries (`src/lib/api.ts`).
+  - `@/*` path mapping in `tsconfig.json` allowing clean imports from `@/lib/...` throughout the codebase.
+- **FastAPI Cross-Origin Resource Sharing (CORS)**:
+  - Browsers enforce the Same-Origin Policy, blocking web apps on `http://localhost:3000` from making asynchronous fetch requests to `http://localhost:8000`.
+  - Adding `CORSMiddleware` in `app/main.py` explicitly whitelisting frontend origins, credentials, and HTTP verbs.
+- **OAuth2 Form Payload vs JSON Contracts**:
+  - FastAPI's `OAuth2PasswordRequestForm` requires `application/x-www-form-urlencoded` payloads (`URLSearchParams` with `username` and `password` keys) for `/auth/login`.
+  - Standard user registration endpoints (`/auth/register`) consume standard `application/json` payloads.
+- **Client-Side Auth State Persistence**:
+  - Storing bearer tokens in browser `localStorage`.
+  - Client component route guards (`useEffect` checking `getToken()`) to redirect unauthenticated visitors to `/login` and provide clean logout workflows.
+
+### Behind the Scenes / Architecture Insights
+- **`next/font/google` Remote Font Dependencies**:
+  - The default Next.js template imports `Geist` from `next/font/google`, which attempts to fetch font files from `fonts.gstatic.com` during compilation.
+  - In network environments with restricted connectivity or proxy timeouts, this triggers fatal `Connection timed out` 500 errors. Removing the remote font fetch and utilizing native system typography renders builds completely offline-capable and resilient.
+
+### What Confused / Mistakes Made
+- **File Placement vs Path Alias Mapping**: Placing `api.ts` inside `src/app/lib/api.ts` caused TypeScript module resolution errors (`Can't resolve '@/lib/api'`). Solved by moving the folder to `src/lib/` directly under `src/`.
+- **Payload Field Name Mismatch**: Typing `formData.append("paasword", ...)` with two `a`s caused FastAPI to reject authentication with a 422 Unprocessable Entity error because OAuth2 explicitly requires the key `password`. Fixed typo to restore authentication.
