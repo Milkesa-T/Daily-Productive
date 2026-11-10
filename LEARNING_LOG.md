@@ -279,3 +279,26 @@ Use this file to record what you learned each day, key mental models, architectu
 
 ### What Confused / Mistakes Made
 - **n8n Action Categorization**: Searching for "commits" inside n8n's built-in GitHub node showed only issue, PR, and file actions. Solved cleanly by utilizing a direct `HTTP Request` node to `api.github.com/repos/.../commits`, granting complete control over query parameters and pagination.
+
+---
+
+## Day 12: Scheduled Daily Productivity Digest Aggregator
+
+### Key Concepts Learned
+- **Cron-Based Scheduling in n8n**:
+  - The `Schedule Trigger` operates independently of incoming external webhooks, firing on recurring wall-clock timestamps (e.g. daily at 08:00 AM) to initiate scheduled batch jobs.
+- **Cross-Domain Data Aggregation**:
+  - Fetching disparate entities (`/tasks` and `/habits`) from the FastAPI REST API and passing them to an in-memory transformation step.
+- **n8n JavaScript Code Node Pipelines**:
+  - Utilizing `$('Node Name').all().map(item => item.json)` to gather datasets from upstream nodes.
+  - Applying array filters to isolate business-critical metrics (e.g. pending tasks, high-priority items with due dates, habit current streaks).
+  - Formatting dynamic Markdown executive briefings ready for delivery over chat, email, or logging.
+
+### Behind the Scenes / Architecture Insights
+- **The Empty-Array Pipeline Halt Gotcha**:
+  - By default in n8n, when an API node returns an empty array `[]` (0 items), n8n assumes there is no payload to iterate over and halts execution of downstream nodes with the warning: *"The execution took a different path and didn't reach this node"*.
+  - Enabling **"Always Output Data"** in the node's **Settings** tab forces n8n to output a default object (`[{}]`), ensuring downstream aggregation nodes execute even when a database table is empty.
+
+### What Confused / Mistakes Made
+- **Empty Habits Table Blocking Downstream Execution**: When `Get Habits` returned `[]` because no habits had been created yet, the Code node was skipped completely. Fixed by enabling "Always Output Data" on the HTTP nodes and adding a habit via `POST /habits`.
+- **Node Scope Reference Errors**: Referencing `$('Get Habits')` before the node was executed or when node name capitalization differed (`get habits` vs `Get Habits`) triggered reference errors in the Code node.
