@@ -330,3 +330,27 @@ Use this file to record what you learned each day, key mental models, architectu
 ### What Confused / Mistakes Made
 - **File Placement vs Path Alias Mapping**: Placing `api.ts` inside `src/app/lib/api.ts` caused TypeScript module resolution errors (`Can't resolve '@/lib/api'`). Solved by moving the folder to `src/lib/` directly under `src/`.
 - **Payload Field Name Mismatch**: Typing `formData.append("paasword", ...)` with two `a`s caused FastAPI to reject authentication with a 422 Unprocessable Entity error because OAuth2 explicitly requires the key `password`. Fixed typo to restore authentication.
+
+---
+
+## Day 14: Interactive Task & Habit Dashboard with Full Stack React State
+
+### Key Concepts Learned
+- **Full Stack React Mutation Patterns**:
+  - Utilizing `Promise.all([fetchTasks(), fetchHabits()])` on initial component mount to parallelize independent data fetches and eliminate waterfalls.
+  - Designing client-side state hooks (`useState`) to store array state collections (`TaskItem[]`, `HabitItem[]`).
+  - Applying array immutability (`[newTask, ...tasks]`, `tasks.filter(...)`, and `tasks.map(...)`) to ensure reactive re-renders when mutating state.
+- **Bi-directional Integration from UI to Automation**:
+  - Adding a task with a `due_date` through the web form dispatches `POST /tasks` ➡️ FastAPI triggers background task ➡️ n8n webhook creates Google Calendar event ➡️ n8n calls back `PATCH /tasks/{id}` to store the event ID!
+  - Completing or deleting tasks in the UI automatically triggers the update/delete webhook lanes.
+- **Habit Streak Gamification**:
+  - Implementing single-click `+1 Streak` button calling `PATCH /habits/{id}` with `current_streak: current_streak + 1` to immediately reflect updated streaks in the dashboard and live in Supabase.
+
+### Behind the Scenes / Architecture Insights
+- **Monorepo / Multi-Folder Execution Contexts**:
+  - Running `npm run dev` from the repository root fails with `Missing script: "dev"` because Next.js dependencies and `package.json` are isolated inside the `frontend/` subdirectory. Executing commands from the dedicated package directory (`cd frontend`) is required.
+- **Optimistic vs Server-Driven State Synchronization**:
+  - After mutating state over the REST API, updating the local React state directly with the server response guarantees UI synchronization without requiring a full page refresh.
+
+### What Confused / Mistakes Made
+- **Working Directory Context Confusion**: Attempting to execute `npm run dev` at the project root generated `npm error Missing script: "dev"`. Resolved by changing directories into `frontend/` where `package.json` resides.
