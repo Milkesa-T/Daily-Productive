@@ -354,3 +354,37 @@ Use this file to record what you learned each day, key mental models, architectu
 
 ### What Confused / Mistakes Made
 - **Working Directory Context Confusion**: Attempting to execute `npm run dev` at the project root generated `npm error Missing script: "dev"`. Resolved by changing directories into `frontend/` where `package.json` resides.
+
+---
+
+## Day 15: Embeddings, Chunking Strategies & Semantic Similarity
+
+### Key Concepts Learned
+
+- **Dense Vector Embeddings**: Text is converted by a neural model into a fixed-length list of floats (a vector) where geometric distance captures semantic meaning. Words or passages with related meaning end up close together in this high-dimensional space.
+- **`gemini-embedding-001`**: Google's production embedding model accessible via the `google-genai` SDK. Supports `output_dimensionality` configuration (default 3072, configured to 768 for pgvector compatibility). Note: `text-embedding-004` is NOT available in `google-genai` — always use `gemini-embedding-001`.
+- **Sliding-Window Chunker**: The `chunk_text(text, chunk_size, chunk_overlap)` function splits text at word boundaries (not mid-word), then slides forward with an overlap to preserve sentence continuity across chunk boundaries. Overlap prevents an important sentence from being cut and lost entirely.
+- **Chunk Size Trade-offs** (empirically verified on journal text):
+  - `chunk_size=100` → 14 chunks, avg 95 chars — very granular, great for precise retrieval but loses surrounding context
+  - `chunk_size=300` → 3 chunks, avg 280 chars — **balanced RAG default**, preserves sentence groups while keeping semantic focus tight
+  - `chunk_size=600` → 2 chunks, avg 398 chars — few chunks, broad context preserved, but semantic signal gets diluted across topics
+- **Cosine Similarity**: Measures the angle between two vectors regardless of their magnitude: `dot(A,B) / (|A| × |B|)`. Returns 1.0 for identical meaning, 0.0 for orthogonal, −1.0 for opposite. Pure Python implementation using `math.sqrt` and `zip`.
+
+### Behind the Scenes / Architecture Insights
+
+- **Why 768 dimensions?**: pgvector supports up to 2000 dimensions, but 768 is a standard "sweet spot" — high enough for rich semantic expressiveness, small enough to keep index size and query latency manageable.
+- **Semantic retrieval proof**: Query "What bug did I fix today?" scored **0.6942** similarity against the OAuth/debugging chunk vs **0.4114** against the unrelated "weather in Paris" query — a gap of 0.28 that demonstrates vectors capture topic relevance, not just keyword overlap.
+- **Overlap design**: Keeping the last ~50 chars of words as overlap ensures that a sentence straddling a chunk boundary contributes context to *both* adjacent chunks, which helps retrieval catch edge cases.
+- **Embedding as the RAG entry point**: Every piece of data stored in the vector DB goes through `get_embedding()` at ingest time; every user query goes through it at retrieval time. The semantic proximity between query vector and chunk vectors determines what context gets fed to the LLM.
+
+### What Confused / Mistakes Made
+
+- **`text-embedding-004` NOT_FOUND**: Google's `google-genai` SDK does not expose `text-embedding-004` — the endpoint returns a 404. The correct model is `gemini-embedding-001`. This wasted time investigating the wrong model name.
+- **`output_dimensionality` vs default**: Without `config={"output_dimensionality": 768}`, the model returns 3072-dimensional vectors by default. We set 768 explicitly to match the pgvector column definition we'll create in D16.
+- **Script path resolution**: Running `python scripts/embedding_experiment.py` requires `sys.path.insert(0, ...)` to add the project root to `PYTHONPATH`, otherwise `from app.services.embedding import ...` raises `ModuleNotFoundError`.
+
+### Questions for Further Exploration
+
+- How does chunking strategy change for structured data (JSON logs) vs free-form prose (journal)?
+- Should chunk boundaries respect paragraph breaks (semantic chunking) rather than fixed character counts?
+- What's the retrieval quality difference between 768-dim and 3072-dim embeddings for our use case?
