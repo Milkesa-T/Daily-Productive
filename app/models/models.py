@@ -1,5 +1,6 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Date, Float
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Date, Float, Text
+from pgvector.sqlalchemy import Vector
 from app.core.database import Base
 
 class Task(Base):
@@ -49,3 +50,14 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at= Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class JournalEntry(Base):
+    __tablename__ = "journal_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=True)
+    content = Column(Text, nullable=False)
+    chunk_index = Column(Integer, default=0)
+    embedding = Column(Vector(768), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+

@@ -388,3 +388,45 @@ Use this file to record what you learned each day, key mental models, architectu
 - How does chunking strategy change for structured data (JSON logs) vs free-form prose (journal)?
 - Should chunk boundaries respect paragraph breaks (semantic chunking) rather than fixed character counts?
 - What's the retrieval quality difference between 768-dim and 3072-dim embeddings for our use case?
+
+---
+
+## Day 16: pgvector Integration & Journal Ingestion Pipeline
+
+### Key Concepts Learned
+
+- **PostgreSQL Vector Extension (`pgvector`)**:
+  - Adds native vector data types (`vector(dim)`) and distance operators (`<=>` for cosine distance, `<->` for Euclidean L2, `<#>` for inner product) to PostgreSQL.
+  - Allows dense embeddings from AI models to be stored directly alongside traditional relational columns (such as `id`, `title`, `created_at`, `chunk_index`).
+- **SQLAlchemy + `pgvector` Integration**:
+  - The `pgvector` Python package (`pgvector.sqlalchemy.Vector`) bridges SQLAlchemy ORM models with PostgreSQL's `vector` extension.
+  - Adding `embedding = Column(Vector(768), nullable=False)` cleanly defines a fixed 768-dimensional column matching `gemini-embedding-001`.
+- **Alembic Auto-generation with Vector Columns**:
+  - Alembic detects the `Vector` column and generates the table DDL `sa.Column('embedding', pgvector.sqlalchemy.vector.VECTOR(dim=768), nullable=False)`.
+  - Important prerequisite: In the migration's `upgrade()` function, always run `op.execute("CREATE EXTENSION IF NOT EXISTS vector")` and `import pgvector` to ensure PostgreSQL activates the extension and Python parses the DDL cleanly.
+- **End-to-End Ingestion Pipeline (`app/services/ingest.py`)**:
+  - Takes raw text and metadata ➡️ slices into semantic chunks (`chunk_text`) with overlap ➡️ calls `get_embedding()` to generate 768-float vectors via Gemini ➡️ instantiates ORM `JournalEntry` records ➡️ commits them into Supabase via transactional session.
+
+### Behind the Scenes / Architecture Insights
+
+- **Why Chunk Before Embedding in Ingestion?**:
+  - A long journal entry cannot simply be embedded as one giant vector without losing fine-grained details: an entire 2-page reflection condensed to a single 768-float vector averages out all nuances.
+  - Chunking creates focused vectors: one vector for debugging OAuth, one for RAG design decisions, one for the workout. When retrieving in Day 17, queries can find the exact paragraph needed.
+- **Database Connection Naming Convention**:
+  - Standardizing database session factories (`SessionLocal` vs `sessionLocal`) ensures consistency across scripts, tests, and API dependencies.
+
+### What Confused / Mistakes Made
+
+- **Alembic Auto-Generated Missing Imports**:
+  - Alembic generated `pgvector.sqlalchemy.vector.VECTOR(...)` in the migration file without adding `import pgvector` to the file header. Running the migration threw a `NameError` until `import pgvector` was manually added.
+- **Extension Order in Migrations**:
+  - If `CREATE EXTENSION IF NOT EXISTS vector` isn't executed before `CREATE TABLE journal_entries`, PostgreSQL will reject the table creation with `type "vector" does not exist`. Placing `op.execute(...)` at the top of `upgrade()` fixes this safely.
+- **Session Factory Casing**:
+  - `database.py` originally defined `sessionLocal = sessionmaker(...)` in camelCase, causing `from app.core.database import SessionLocal` in scripts to fail with an `ImportError`. Aliased `SessionLocal = sessionLocal` to support standard PascalCase conventions.
+- **Network Resolution in Sandbox**:
+  - Connecting directly to remote cloud databases like Supabase (`aws-1-eu-central-1.pooler.supabase.com`) requires external socket resolution, which runs under standard network execution.
+
+### Questions for Further Exploration
+
+- When our journal table grows to thousands of entries, which index type (`HNSW` vs `IVFFlat`) will provide the best trade-off between build time and query latency?
+- Can we perform hybrid search (full-text search with `to_tsvector` + vector search with `<=>`) to get the best of both keyword precision and semantic meaning?
