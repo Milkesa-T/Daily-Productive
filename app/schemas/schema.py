@@ -1,7 +1,7 @@
 
 from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 
 # task schema 
@@ -157,6 +157,31 @@ class UserResponse(BaseModel):
     is_active:bool
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+
+# --- Journal & Vector Search Schemas ---
+
+class JournalCreate(BaseModel):
+    title: Optional[str] = None
+    content: str
+
+
+class JournalSearchResult(BaseModel):
+    id: int
+    title: Optional[str] = None
+    content: str
+    chunk_index: int
+    similarity: float
+    distance: float
+    created_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class JournalSearchResponse(BaseModel):
+    query: str
+    total_results: int
+    results: List[JournalSearchResult]
+
 
 class Token(BaseModel):
     access_token: str

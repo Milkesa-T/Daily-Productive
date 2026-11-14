@@ -430,3 +430,45 @@ Use this file to record what you learned each day, key mental models, architectu
 
 - When our journal table grows to thousands of entries, which index type (`HNSW` vs `IVFFlat`) will provide the best trade-off between build time and query latency?
 - Can we perform hybrid search (full-text search with `to_tsvector` + vector search with `<=>`) to get the best of both keyword precision and semantic meaning?
+
+---
+
+## Day 17: Semantic Search Retrieval Endpoint with pgvector
+
+### Key Concepts Learned
+
+- **Vector Distance vs Vector Similarity**:
+  - Distance and similarity are inversely related. pgvector's `<=>` operator computes **Cosine Distance**, defined as:
+    $$\text{Cosine Distance} = 1.0 - \text{Cosine Similarity}$$
+  - A cosine distance of `0.0` represents identical vector alignment (similarity `1.0`).
+  - A cosine distance of `1.0` represents orthogonal, unrelated concepts (similarity `0.0`).
+  - To present an intuitive score to API clients, we calculate:
+    $$\text{similarity} = 1.0 - \text{distance}$$
+- **SQLAlchemy pgvector Operator Syntax**:
+  - `JournalEntry.embedding.cosine_distance(query_vector)` translates directly into PostgreSQL's `<=>` operator in the generated SQL statement.
+  - Adding `.label("distance")` allows selecting both the ORM model instance and the computed distance scalar in a single query tuple: `db.query(JournalEntry, distance).order_by(distance.asc()).limit(k)`.
+- **Decoupled Search Service Architecture (`app/services/search.py`)**:
+  - Keeps query parsing, dynamic vector embedding via Gemini, and database distance calculation isolated from HTTP routing concerns.
+  - Supports optional threshold filtering (`similarity >= threshold`) to exclude irrelevant chunks if needed.
+- **RESTful Vector Search API (`GET /journal/search`)**:
+  - Exposes `q` (query string with validation rejecting empty whitespace) and `limit` (bounded between 1 and 20).
+  - Returns structured `JournalSearchResponse` containing the original query, result count, and ranked list of chunks with similarity scores.
+
+### Behind the Scenes / Architecture Insights
+
+- **Zero-Keyword Semantic Matching**:
+  - In our test experiment, querying *"What token problem did I debug?"* yielded the chunk containing *"OAuth bug... token validation middleware... PyJWT decode"* as Rank 1 with similarity `0.7061`, even though the exact word *"problem"* never appeared in the text!
+  - Querying *"How far did I run in the evening workout?"* retrieved the workout chunk with `0.7037` similarity, ignoring all OAuth and RAG chunks.
+  - This confirms that dense vector retrieval finds content based on conceptual meaning rather than brittle keyword matching.
+
+### What Confused / Mistakes Made
+
+- **Pydantic Type Annotation Scope**:
+  - Added `results: List[JournalSearchResult]` to `app/schemas/schema.py` without including `List` in the `typing` import header. Python threw `NameError: name 'List' is not defined` during pytest collection until `from typing import Optional, List` was specified.
+- **FastAPI Validation on Whitespace Query**:
+  - Standard `min_length=1` allows a string consisting solely of spaces (`"   "`). Added explicit check `if not q.strip(): raise HTTPException(400, ...)` to reject whitespace-only searches cleanly.
+
+### Questions for Further Exploration
+
+- How will search performance scale as the database grows to 100,000+ chunks without an HNSW index?
+- Can we re-rank the top-k retrieved chunks using a cross-encoder model before sending them to the generation prompt in Day 18?

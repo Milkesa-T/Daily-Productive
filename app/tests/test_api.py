@@ -93,3 +93,25 @@ def test_goal_invalid_date_range():
     assert response.status_code in [400, 422]
     error_text = response.text.lower()
     assert "earlier than start_date" in error_text or "cannot be before" in error_text
+
+
+# 7. Test Journal Semantic Vector Search
+def test_journal_semantic_search():
+    # Test valid semantic query
+    response = client.get("/journal/search?q=OAuth bug fix&limit=2")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["query"] == "OAuth bug fix"
+    assert "results" in data
+    assert len(data["results"]) >= 1
+
+    top_result = data["results"][0]
+    assert "similarity" in top_result
+    assert "distance" in top_result
+    assert "content" in top_result
+    assert top_result["similarity"] > 0.4
+
+    # Test empty query validation (should reject whitespace)
+    empty_res = client.get("/journal/search?q=   ")
+    assert empty_res.status_code in [400, 422]
+

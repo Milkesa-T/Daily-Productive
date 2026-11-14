@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.routers import health, habits, tasks, goals, auth
+from app.routers import health, habits, tasks, goals, auth, journal
 
 app = FastAPI(
     title=settings.app_name,
@@ -21,6 +21,7 @@ app.include_router(auth.router)
 app.include_router(tasks.router)
 app.include_router(habits.router)
 app.include_router(goals.router)
+app.include_router(journal.router)
 
 @app.get("/")
 def read_root():
