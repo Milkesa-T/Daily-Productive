@@ -183,6 +183,24 @@ class JournalSearchResponse(BaseModel):
     results: List[JournalSearchResult]
 
 
+class JournalAskRequest(BaseModel):
+    question: str
+
+
+class JournalSource(BaseModel):
+    id: int
+    title: Optional[str] = None
+    chunk_index: Optional[int] = 0
+    similarity: Optional[float] = None
+    snippet: str
+
+
+class JournalAskResponse(BaseModel):
+    question: str
+    answer: str
+    sources: List[JournalSource]
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str
