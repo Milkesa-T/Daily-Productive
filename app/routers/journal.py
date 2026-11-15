@@ -7,9 +7,12 @@ from app.schemas.schema import (
     JournalCreate,
     JournalSearchResponse,
     JournalSearchResult,
+    JournalAskRequest,
+    JournalAskResponse,
 )
 from app.services.ingest import ingest_journal_entry
 from app.services.search import search_journal_entries
+from app.services.rag import generate_rag_answer
 
 router = APIRouter(prefix="/journal", tags=["Journal"])
 
@@ -63,4 +66,23 @@ def create_journal_entry(
         "chunks_created": len(created_chunks),
         "title": payload.title,
     }
+
+
+@router.post("/ask", response_model=JournalAskResponse)
+def ask_journal(
+    payload: JournalAskRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    RAG endpoint: answers user questions grounded in their personal journal entries.
+    """
+    if not payload.question.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Question cannot be empty."
+        )
+
+    result = generate_rag_answer(db=db, question=payload.question)
+    return result
+
 
