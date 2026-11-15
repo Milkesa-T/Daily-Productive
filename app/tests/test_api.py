@@ -115,3 +115,22 @@ def test_journal_semantic_search():
     empty_res = client.get("/journal/search?q=   ")
     assert empty_res.status_code in [400, 422]
 
+
+# 8. Test Journal RAG Question Answering Endpoint
+def test_journal_rag_ask():
+    # Valid question
+    payload = {"question": "What bug was fixed in the sprint?"}
+    response = client.post("/journal/ask", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["question"] == payload["question"]
+    assert "answer" in data
+    assert len(data["answer"]) > 10
+    assert "sources" in data
+    assert isinstance(data["sources"], list)
+
+    # Empty question validation
+    bad_response = client.post("/journal/ask", json={"question": "   "})
+    assert bad_response.status_code in [400, 422]
+
+

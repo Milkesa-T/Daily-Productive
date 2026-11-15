@@ -472,3 +472,44 @@ Use this file to record what you learned each day, key mental models, architectu
 
 - How will search performance scale as the database grows to 100,000+ chunks without an HNSW index?
 - Can we re-rank the top-k retrieved chunks using a cross-encoder model before sending them to the generation prompt in Day 18?
+
+---
+
+## Day 18: Grounded RAG Prompting & Evaluation Benchmark
+
+### Key Concepts Learned
+
+- **The Complete RAG Loop (Retrieve $\rightarrow$ Augment $\rightarrow$ Generate)**:
+  1. **Retrieve**: Takes user query, computes 768-dim dense embedding, queries pgvector (`<=>`) for top-$k$ relevant chunks in Supabase.
+  2. **Augment**: Formats retrieved chunks into a numbered context block and injects them alongside strict system guardrails into the prompt template.
+  3. **Generate**: Invokes Gemini (`gemini-flash-lite-latest`) with `temperature=0.2` to synthesize a concise, factual answer citing the journal entry source.
+- **Hallucination Prevention Guardrails**:
+  - Setting temperature low (`0.2`) forces deterministic, fact-bound generation rather than creative embellishment.
+  - Applying explicit negative constraints in the system instruction: *"If the excerpts do NOT contain the answer, reply EXACTLY: 'I don't have enough information in your journal to answer that.'"*
+  - Adding a minimum similarity threshold filter (`min_similarity=0.40`) to prevent garbage context from reaching the LLM if no relevant journal entry exists.
+- **RAG Evaluation Methodology**:
+  - You cannot evaluate a RAG system on answerable questions alone: measuring how the system handles **unanswerable** questions is equally critical.
+  - An evaluation benchmark must test both:
+    1. **Faithfulness / Groundedness** on in-domain queries: Did it extract the exact truth without altering facts?
+    2. **Rejection Accuracy** on out-of-domain queries: Did it safely refuse without inventing fake facts?
+  - Our 10-question benchmark achieved **10/10 (100%)** accuracy.
+
+### Behind the Scenes / Architecture Insights
+
+- **Model Lifecycle & Endpoint Availability**:
+  - In Google's `google-genai` SDK, legacy endpoints (like `gemini-1.5-flash` or deprecated preview models) return `404 NOT_FOUND` or `503 UNAVAILABLE` during demand spikes.
+  - Querying `client.models.list()` dynamically allowed identifying active generation models. `gemini-flash-lite-latest` responded with sub-second latency and zero errors.
+- **Full Transparency with Source Citations**:
+  - The `POST /journal/ask` endpoint returns both the synthesized text answer and an array of `sources` (including chunk ID, entry title, chunk index, similarity score, and text snippet). This makes verification trivial in frontend chat UIs.
+
+### What Confused / Mistakes Made
+
+- **Model Deprecation / 404 Error**:
+  - Initially targeted `gemini-2.5-flash`, which Google GenAI returned 404 for new users. Discovered `gemini-flash-lite-latest` provides stable, high-throughput completions for RAG generation.
+- **Schema Separation for Ask Endpoint**:
+  - Created distinct request/response schemas (`JournalAskRequest`, `JournalAskResponse`, `JournalSource`) rather than overloading search schemas, keeping API contracts cleanly typed.
+
+### Questions for Further Exploration
+
+- How can we implement streaming responses (`generate_content_stream`) so answers appear token-by-token in the frontend UI?
+- Should we add conversation history memory (multi-turn RAG chat) in Day 19?
