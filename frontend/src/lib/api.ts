@@ -156,3 +156,42 @@ export async function deleteHabit(id: number): Promise<void> {
   });
   if (!res.ok) throw new Error("Failed to delete habit");
 }
+
+// --- RAG / CHAT API CALLS ---
+export interface ChatSource {
+  id: number;
+  title?: string | null;
+  chunk_index?: number;
+  similarity?: number;
+  snippet: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  sources?: ChatSource[];
+  timestamp: string;
+}
+
+export interface AskJournalResponse {
+  question: string;
+  answer: string;
+  sources: ChatSource[];
+}
+
+export async function askJournal(question: string): Promise<AskJournalResponse> {
+  const res = await fetch(`${API_URL}/journal/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || "Failed to get an answer from the assistant");
+  }
+
+  return res.json();
+}
+

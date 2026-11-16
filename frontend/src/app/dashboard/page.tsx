@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   getToken,
   removeToken,
@@ -169,12 +170,21 @@ export default function DashboardPage() {
               Live FastAPI Backend + Supabase Database + n8n Automations
             </p>
           </div>
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-sm font-medium transition"
-          >
-            Log Out
-          </button>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/chat"
+              className="px-4 py-2 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-sm font-semibold shadow-md shadow-indigo-600/30 transition flex items-center gap-2"
+            >
+              <span>💬</span>
+              <span>AI Assistant</span>
+            </Link>
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-sm font-medium transition"
+            >
+              Log Out
+            </button>
+          </div>
         </header>
 
         {/* STATS BAR */}
