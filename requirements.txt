@@ -9,3 +9,6 @@ bcrypt
 pyjwt
 pytest
 httpx
+pgvector
+google-genai
+

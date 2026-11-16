@@ -542,3 +542,40 @@ Use this file to record what you learned each day, key mental models, architectu
 
 - **Turbopack Process Spawning Error**:
   - Running `next build` inside the sandbox caused Turbopack to fail when connecting to child loader processes. Utilizing `npx next build --webpack` bypassed the issue completely, confirming full TypeScript and page route compilation in 15.8 seconds.
+
+---
+
+## Day 20: Project Polish, Environment Audits & Production Documentation
+
+### Key Concepts Learned
+
+- **Environment Sanitization & Security Contracts**:
+  - Committing `.env` files is a major security vulnerability; providing `.env.example` documents the required configuration interface without leaking API secrets or credentials.
+  - Adding clear descriptions for `DATABASE_URL`, `JWT_SECRET_KEY`, `N8N_WEBHOOK_URL`, and `GEMINI_API_KEY` ensures smooth onboarding for future contributors.
+- **Dependency Manifest Consistency**:
+  - `requirements.txt` must accurately reflect all production runtime libraries. Added `pgvector` and `google-genai` which were added during the vector AI phases.
+  - Upgrading `.gitignore` prevents test caches (`.pytest_cache/`), Python bytecode (`__pycache__/`), and frontend build outputs (`frontend/.next/`, `node_modules/`) from polluting version control.
+- **Production README Engineering**:
+  - A comprehensive README is the front door of any engineering project. Structured with:
+    1. High-level elevator pitch and key capabilities.
+    2. ASCII / Mermaid system architecture diagrams mapping out the data flow between Next.js, FastAPI, n8n, Supabase, and Gemini.
+    3. Complete API endpoint matrix with HTTP methods and descriptions.
+    4. Step-by-step local development instructions.
+    5. Test suite instructions and RAG benchmark results.
+
+---
+
+## Day 21: Containerization, Deployment & Sprint Retrospective
+
+### Key Concepts Learned
+
+- **Containerization of Modern AI/FastAPI Stacks**:
+  - Writing a production-ready `Dockerfile` based on `python:3.13-slim` with necessary C build dependencies (`libpq-dev`, `build-essential`) for `psycopg2`.
+  - Chaining `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000` in the container startup command ensures the schema is always current upon boot.
+- **Multi-Service Composition (`docker-compose.yml`)**:
+  - Orchestrating the FastAPI backend alongside the self-hosted n8n automation engine on a shared bridge network (`productive-network`).
+  - Persisting n8n automation state across container restarts using named volumes (`n8n_data`).
+- **Sprint Synthesis & Retrospective Engineering**:
+  - Summarizing 21 consecutive days of full-stack engineering into a formal retrospective document (`RETROSPECTIVE.md`).
+  - Documenting hard-won insights on distributed systems, bi-directional webhooks, dense vector similarity, and hallucination-resistant prompting.
+  - Defining a practical v2 roadmap for real-world production enhancements (Server-Sent Events streaming, hybrid BM25 + vector search, multi-turn chat memory).

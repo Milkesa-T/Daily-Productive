@@ -1,5 +1,6 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Date, Float, Text
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Date, Float, Text, ForeignKey
+from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
 from app.core.database import Base
 
@@ -7,6 +8,7 @@ class Task(Base):
     __tablename__ = "tasks"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     title = Column(String, nullable=False)
     description = Column(String, nullable=True)
     due_date = Column(DateTime, nullable=True)
@@ -23,6 +25,7 @@ class Habit(Base):
     __tablename__ = "habits"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String, nullable=False)
     frequency_type = Column(String, nullable=False)
     target_count = Column(Integer, default=1, nullable=False)
@@ -34,6 +37,7 @@ class Goal(Base):
     __tablename__ = "goals"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     title = Column(String, nullable=False)
     description = Column(String, nullable=True)
     start_date = Column(Date, nullable=True)
@@ -55,9 +59,11 @@ class JournalEntry(Base):
     __tablename__ = "journal_entries"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     title = Column(String, nullable=True)
     content = Column(Text, nullable=False)
     chunk_index = Column(Integer, default=0)
     embedding = Column(Vector(768), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
 
