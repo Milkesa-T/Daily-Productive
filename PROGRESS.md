@@ -29,3 +29,15 @@ Personal productivity platform built from scratch: FastAPI, PostgreSQL (Supabase
 | **D19** | Chat box in Next.js | Conversational UI communicating with RAG endpoint | Done | 2.5 - 3.0 | ~2.5 | Conversational AI chat interface in Next.js (frontend/src/app/chat/page.tsx); askJournal API client with TypeScript contracts; auto-scrolling message thread, starter query chips, expandable source citations with similarity match percentages; dashboard navigation button; Next.js production build passes with 0 errors; all 8 pytest tests passing |
 | **D20** | Cleanup, README, bug fixes | Clean repository, environment setup guide, bug fixes | Done | 2.5 - 3.0 | ~2.5 | Repository-wide dependency audit; updated requirements.txt (pgvector, google-genai); standardized .env.example; enhanced .gitignore; comprehensive production README.md with architecture diagrams, tech stack matrix, API reference table, and quick start guide |
 | **D21** | Deploy (if time) + retrospective | Live or packaged deployment + sprint retrospective | Done | 2.5 - 3.0 | ~2.5 | Multi-stage Dockerfile for FastAPI + Uvicorn; docker-compose.yml orchestrating backend and n8n services; comprehensive RETROSPECTIVE.md analyzing all 21 days, architectural patterns mastered, bug post-mortems, and v2 roadmap; all 8 backend tests passing |
+
+---
+
+## Hardening & Completeness Progress Tracker (By Phases)
+
+| Phase | Focus | Status | Notes / Deliverables |
+|:---:|:---|:---:|:---|
+| **Phase A** | **Lock Down** | **Done** | `user_id` FK on `tasks`, `habits`, `goals`, `journal_entries` via migration `e447a7800ce0`; backfilled existing rows to user ID 16 (`milkesataye0450@gmail.com`); `Depends(get_current_user)` on all routers; user data isolation enforced; public registration env toggle (`ALLOW_REGISTRATION`); production CORS origins parsing; frontend `getAuthHeaders()` in `api.ts`; 10/10 pytest tests passing |
+| **Phase B** | **Data Model Gaps** | In Progress | Task-goal relational linkage (`goal_id`), Reminder entity CRUD, Category table, Habit completion history table, Journal full CRUD + re-embedding, `GET /dashboard` summary endpoint |
+| **Phase C** | **n8n Automations & Fixes** | Not started | Task due-date calendar event fix, reminder & habit calendar sync, workflow JSON exports into repo (`n8n/workflows/`), dedicated GitHub repos/commits tables |
+| **Phase D** | **Frontend Screens (Mobile-First)** | Not started | Goals screen with progress bar, Journal browser/editor screen, Reminders screen, inline task editing, habit "mark done today", dashboard `/dashboard` integration, clean stale duplicate files |
+
