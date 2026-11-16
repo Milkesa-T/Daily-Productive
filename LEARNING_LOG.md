@@ -579,3 +579,26 @@ Use this file to record what you learned each day, key mental models, architectu
   - Summarizing 21 consecutive days of full-stack engineering into a formal retrospective document (`RETROSPECTIVE.md`).
   - Documenting hard-won insights on distributed systems, bi-directional webhooks, dense vector similarity, and hallucination-resistant prompting.
   - Defining a practical v2 roadmap for real-world production enhancements (Server-Sent Events streaming, hybrid BM25 + vector search, multi-turn chat memory).
+
+---
+
+# Hardening Phase Learning Log (By Phases)
+
+## Phase A: Security Lockdown & Multi-Tenant Data Isolation
+
+### Key Concepts Learned
+
+- **Multi-Tenant Schema Migration with Existing Data Backfill**:
+  - Adding a non-nullable foreign key (`user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)`) to populated database tables requires a 3-step migration pattern:
+    1. Add the column as `nullable=True`.
+    2. Query for the primary user (`milkesataye0450@gmail.com`) and execute raw SQL `UPDATE table SET user_id = :uid WHERE user_id IS NULL`.
+    3. Alter the column constraint to `nullable=False`, create an index, and establish the named foreign key constraint (`ondelete="CASCADE"`).
+- **Universal Route Guarding with `Depends(get_current_user)`**:
+  - Unauthenticated endpoints are a critical security hole. Enforcing `current_user: User = Depends(get_current_user)` across all operational routers (`/tasks`, `/habits`, `/goals`, `/journal`) ensures every request is verified via JWT signature.
+  - Scoping database queries (`db.query(Entity).filter(Entity.user_id == current_user.id)`) guarantees that User B can never read, update, or delete User A's data, even if they guess primary key IDs.
+- **Client-Side Authorization Propagation**:
+  - Updated `frontend/src/lib/api.ts` with `getAuthHeaders()`, automatically injecting `Authorization: Bearer <token>` from browser `localStorage` across all REST mutations and vector queries.
+- **Configurable Public Registration**:
+  - Added `allow_registration` flag in `pydantic-settings` to enable locking down self-registration for single-user or invite-only deployment.
+- **Automated Multi-Tenant Isolation Testing**:
+  - Implemented Test 9 (unauthenticated 401 checks) and Test 10 (data isolation verification where User B receives 404 when targeting User A's task IDs) in `app/tests/test_api.py`.
