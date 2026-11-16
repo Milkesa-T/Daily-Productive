@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     access_token_expire_minutes : int = 60
     n8n_webhook_url: str = "http://localhost:5678/webhook/daily-productive"    
     gemini_api_key: Optional[str] = None
+    allow_registration: bool = True
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
     class Config:
         env_file = ".env"

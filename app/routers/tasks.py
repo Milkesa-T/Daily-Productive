@@ -4,16 +4,22 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.webhook import trigger_n8n_webhook
-from app.models.models import Task
+from app.models.models import Task, User
+from app.routers.auth import get_current_user
 from app.schemas.schema import TaskCreate, TaskResponse, TaskUpdate
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
 # 1. CREATE
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
-def create_task(task_in: TaskCreate,  background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    # Convert validated Pydantic fields directly into an ORM object
-    new_task = Task(**task_in.model_dump())
+def create_task(
+    task_in: TaskCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Convert validated Pydantic fields directly into an ORM object bound to current user
+    new_task = Task(**task_in.model_dump(), user_id=current_user.id)
     db.add(new_task)
     db.commit()
     db.refresh(new_task)  # Loads system assigned ID and timestamps
@@ -31,21 +37,34 @@ def create_task(task_in: TaskCreate,  background_tasks: BackgroundTasks, db: Ses
 
 # 2. READ ALL
 @router.get("", response_model=List[TaskResponse])
-def get_all_tasks(db: Session = Depends(get_db)):
-    return db.query(Task).all()
+def get_all_tasks(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return db.query(Task).filter(Task.user_id == current_user.id).all()
 
 # 3. READ BY ID
 @router.get("/{task_id}", response_model=TaskResponse)
-def get_task_by_id(task_id: int, db: Session = Depends(get_db)):
-    task = db.query(Task).filter(Task.id == task_id).first()
+def get_task_by_id(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    task = db.query(Task).filter(Task.id == task_id, Task.user_id == current_user.id).first()
     if not task:
         raise HTTPException(status_code=404, detail=f"Task with ID {task_id} not found")
     return task
 
 # 4. UPDATE (PATCH)
 @router.patch("/{task_id}", response_model=TaskResponse)
-def update_task(task_id: int, task_in: TaskUpdate, background_tasks: BackgroundTasks,  db: Session = Depends(get_db)):
-    db_task = db.query(Task).filter(Task.id == task_id).first()
+def update_task(
+    task_id: int,
+    task_in: TaskUpdate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db_task = db.query(Task).filter(Task.id == task_id, Task.user_id == current_user.id).first()
     if not db_task:
         raise HTTPException(status_code=404, detail=f"Task with ID {task_id} not found")
     
@@ -63,7 +82,7 @@ def update_task(task_id: int, task_in: TaskUpdate, background_tasks: BackgroundT
             "reminder_id": db_task.reminder_id,
             "title": db_task.title,
             "description": db_task.description,
-            "due_date": db_task.due_date.isoformat() if db_task.due_date else None ,
+            "due_date": db_task.due_date.isoformat() if db_task.due_date else None,
             "priority_level": db_task.priority_level, 
         }
         background_tasks.add_task(trigger_n8n_webhook, payload)
@@ -72,13 +91,18 @@ def update_task(task_id: int, task_in: TaskUpdate, background_tasks: BackgroundT
 
 # 5. DELETE
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_task(task_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    db_task = db.query(Task).filter(Task.id == task_id).first()
+def delete_task(
+    task_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db_task = db.query(Task).filter(Task.id == task_id, Task.user_id == current_user.id).first()
     if not db_task:
         raise HTTPException(status_code=404, detail=f"Task with ID {task_id} not found")
     if db_task.reminder_id:
         payload = {
-            "event" : "task_deleted",
+            "event": "task_deleted",
             "task_id": db_task.id,
             "reminder_id": db_task.reminder_id,     
         }
@@ -86,3 +110,4 @@ def delete_task(task_id: int, background_tasks: BackgroundTasks, db: Session = D
     db.delete(db_task)
     db.commit()
     return None  # HTTP 204 returns no body layout
+

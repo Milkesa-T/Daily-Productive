@@ -8,6 +8,7 @@ from app.services.embedding import chunk_text, get_embedding
 def ingest_journal_entry(
     db: Session,
     content: str,
+    user_id: int,
     title: Optional[str] = None,
     chunk_size: int = 300,
     chunk_overlap: int = 50,
@@ -16,7 +17,7 @@ def ingest_journal_entry(
     Ingests a journal entry:
     1. Splits the text into chunks of ~chunk_size with overlap.
     2. Generates a 768-dimensional dense vector embedding for each chunk.
-    3. Persists chunks and their vector embeddings into the database.
+    3. Persists chunks and their vector embeddings into the database tied to user_id.
     """
     chunks = chunk_text(content, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     if not chunks:
@@ -26,6 +27,7 @@ def ingest_journal_entry(
     for index, chunk in enumerate(chunks):
         embedding_vector = get_embedding(chunk, dimensions=768)
         entry = JournalEntry(
+            user_id=user_id,
             title=title,
             content=chunk,
             chunk_index=index,

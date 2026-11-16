@@ -18,6 +18,12 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register(user_in: UserCreate, db: Session = Depends(get_db)):
+    if not settings.allow_registration:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Public registration is disabled."
+        )
+
     existing_user = db.query(User).filter(User.email == user_in.email).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")

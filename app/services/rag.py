@@ -1,4 +1,4 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from app.services.embedding import get_gemini_client
 from app.services.search import search_journal_entries
@@ -34,13 +34,14 @@ def format_context(chunks: List[Dict[str, Any]]) -> str:
 def generate_rag_answer(
     db: Session,
     question: str,
+    user_id: Optional[int] = None,
     top_k: int = 3,
     min_similarity: float = 0.40,
     model_name: str = "gemini-flash-lite-latest"
 ) -> Dict[str, Any]:
     """
     Full RAG pipeline:
-    1. Retrieve: Fetches top-k semantically relevant chunks via pgvector.
+    1. Retrieve: Fetches top-k semantically relevant chunks via pgvector for user_id.
     2. Augment: Injects the chunks into a grounded prompt template.
     3. Generate: Calls Gemini to produce a factual, grounded response.
     """
@@ -56,6 +57,7 @@ def generate_rag_answer(
     retrieved_chunks = search_journal_entries(
         db=db,
         query=clean_question,
+        user_id=user_id,
         limit=top_k,
         threshold=min_similarity
     )

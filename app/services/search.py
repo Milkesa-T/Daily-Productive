@@ -7,14 +7,16 @@ from app.services.embedding import get_embedding
 def search_journal_entries(
     db: Session,
     query: str,
+    user_id: Optional[int] = None,
     limit: int = 3,
     threshold: Optional[float] = None
 ) -> List[Dict[str, Any]]:
     """
     Performs semantic vector search across journal entries using pgvector's
-    cosine distance operator (<=>).
+    cosine distance operator (<=>), scoped to user_id.
 
     - query: Natural language search string.
+    - user_id: ID of the user whose entries are searched.
     - limit: Maximum number of chunks to return (top-k).
     - threshold: Optional minimum cosine similarity (0.0 to 1.0).
     """
@@ -29,8 +31,12 @@ def search_journal_entries(
     # Cosine distance = 1.0 - cosine_similarity (0.0 = identical, 2.0 = opposite)
     distance_col = JournalEntry.embedding.cosine_distance(query_vector).label("distance")
 
+    query_obj = db.query(JournalEntry, distance_col)
+    if user_id is not None:
+        query_obj = query_obj.filter(JournalEntry.user_id == user_id)
+
     results = (
-        db.query(JournalEntry, distance_col)
+        query_obj
         .order_by(distance_col.asc())
         .limit(limit)
         .all()

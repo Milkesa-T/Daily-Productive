@@ -2,38 +2,55 @@ from typing import List
 from fastapi import APIRouter, Depends, status 
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.models.models import Goal
+from app.models.models import Goal, User
+from app.routers.auth import get_current_user
 from app.schemas.schema import GoalCreate, GoalResponse, GoalUpdate
 from app.core.exceptions import EntityNotFoundException, BusinessRuleViolationException
 
 router = APIRouter(prefix='/goals', tags=["Goals"])
-def validate_goal_dates(start_date , target_date):
+def validate_goal_dates(start_date, target_date):
     if start_date and target_date and target_date < start_date:
         raise BusinessRuleViolationException("Target date cannot be before start date")
 
 @router.post("", response_model=GoalResponse, status_code=status.HTTP_201_CREATED)
-def create_goal(goal_in:GoalCreate, db: Session= Depends(get_db)):
+def create_goal(
+    goal_in: GoalCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     validate_goal_dates(goal_in.start_date, goal_in.target_date)
-    new_goal = Goal (**goal_in.model_dump())
+    new_goal = Goal(**goal_in.model_dump(), user_id=current_user.id)
     db.add(new_goal)
     db.commit()
     db.refresh(new_goal)
     return new_goal
 
 @router.get("", response_model=List[GoalResponse])
-def get_all_goals(db: Session = Depends(get_db)):
-    return db.query(Goal).all()
+def get_all_goals(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return db.query(Goal).filter(Goal.user_id == current_user.id).all()
 
 @router.get("/{goal_id}", response_model=GoalResponse)
-def get_goal_by_id(goal_id: int, db: Session = Depends(get_db)):
-    goal = db.query(Goal).filter(Goal.id == goal_id).first()
+def get_goal_by_id(
+    goal_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    goal = db.query(Goal).filter(Goal.id == goal_id, Goal.user_id == current_user.id).first()
     if not goal:
         raise EntityNotFoundException(entity_name="Goal", entity_id=goal_id)
     return goal
 
 @router.patch("/{goal_id}", response_model=GoalResponse)
-def update_goal(goal_id: int, goal_in: GoalUpdate, db: Session = Depends(get_db)):
-    db_goal = db.query(Goal).filter(Goal.id == goal_id).first()
+def update_goal(
+    goal_id: int,
+    goal_in: GoalUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db_goal = db.query(Goal).filter(Goal.id == goal_id, Goal.user_id == current_user.id).first()
     if not db_goal:
         raise EntityNotFoundException(entity_name="Goal", entity_id=goal_id)
     
@@ -52,8 +69,12 @@ def update_goal(goal_id: int, goal_in: GoalUpdate, db: Session = Depends(get_db)
     return db_goal
 
 @router.delete("/{goal_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_goal(goal_id: int, db: Session = Depends(get_db)):
-    db_goal = db.query(Goal).filter(Goal.id == goal_id).first()
+def delete_goal(
+    goal_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db_goal = db.query(Goal).filter(Goal.id == goal_id, Goal.user_id == current_user.id).first()
     if not db_goal:
         raise EntityNotFoundException(entity_name="Goal", entity_id=goal_id)
     

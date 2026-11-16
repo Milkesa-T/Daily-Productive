@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 export const getToken = (): string | null => {
   if (typeof window !== "undefined") {
@@ -17,6 +17,14 @@ export const removeToken = (): void => {
   if (typeof window !== "undefined") {
     localStorage.removeItem("access_token");
   }
+};
+
+export const getAuthHeaders = (contentType: string = "application/json"): HeadersInit => {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (contentType) headers["Content-Type"] = contentType;
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return headers;
 };
 
 export async function loginUser(email: string, password: string) {
@@ -82,7 +90,9 @@ export interface HabitItem {
 }
 // --- TASK API CALLS ---
 export async function fetchTasks(): Promise<TaskItem[]> {
-  const res = await fetch(`${API_URL}/tasks`);
+  const res = await fetch(`${API_URL}/tasks`, {
+    headers: getAuthHeaders(),
+  });
   if (!res.ok) throw new Error("Failed to fetch tasks");
   return res.json();
 }
@@ -95,7 +105,7 @@ export async function createTask(task: {
 }): Promise<TaskItem> {
   const res = await fetch(`${API_URL}/tasks`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify(task),
   });
   if (!res.ok) throw new Error("Failed to create task");
@@ -107,7 +117,7 @@ export async function updateTask(
 ): Promise<TaskItem> {
   const res = await fetch(`${API_URL}/tasks/${id}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error("Failed to update task");
@@ -116,12 +126,15 @@ export async function updateTask(
 export async function deleteTask(id: number): Promise<void> {
   const res = await fetch(`${API_URL}/tasks/${id}`, {
     method: "DELETE",
+    headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error("Failed to delete task");
 }
 // --- HABIT API CALLS ---
 export async function fetchHabits(): Promise<HabitItem[]> {
-  const res = await fetch(`${API_URL}/habits`);
+  const res = await fetch(`${API_URL}/habits`, {
+    headers: getAuthHeaders(),
+  });
   if (!res.ok) throw new Error("Failed to fetch habits");
   return res.json();
 }
@@ -132,7 +145,7 @@ export async function createHabit(habit: {
 }): Promise<HabitItem> {
   const res = await fetch(`${API_URL}/habits`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify(habit),
   });
   if (!res.ok) throw new Error("Failed to create habit");
@@ -144,7 +157,7 @@ export async function updateHabit(
 ): Promise<HabitItem> {
   const res = await fetch(`${API_URL}/habits/${id}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error("Failed to update habit");
@@ -153,6 +166,7 @@ export async function updateHabit(
 export async function deleteHabit(id: number): Promise<void> {
   const res = await fetch(`${API_URL}/habits/${id}`, {
     method: "DELETE",
+    headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error("Failed to delete habit");
 }
@@ -183,7 +197,7 @@ export interface AskJournalResponse {
 export async function askJournal(question: string): Promise<AskJournalResponse> {
   const res = await fetch(`${API_URL}/journal/ask`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ question }),
   });
 

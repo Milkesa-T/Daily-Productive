@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.models.models import User
+from app.routers.auth import get_current_user
 from app.schemas.schema import (
     JournalCreate,
     JournalSearchResponse,
@@ -22,9 +24,10 @@ def search_journal(
     q: str = Query(..., min_length=1, description="Natural language search query"),
     limit: int = Query(3, ge=1, le=20, description="Maximum number of chunks to return"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
-    Search journal entries semantically using pgvector cosine distance.
+    Search journal entries semantically using pgvector cosine distance scoped to current user.
     Returns the top-k most relevant chunks ordered by similarity score.
     """
     if not q.strip():
@@ -33,7 +36,7 @@ def search_journal(
             detail="Search query cannot be empty or blank whitespace."
         )
 
-    results = search_journal_entries(db=db, query=q, limit=limit)
+    results = search_journal_entries(db=db, query=q, user_id=current_user.id, limit=limit)
     return JournalSearchResponse(
         query=q,
         total_results=len(results),
@@ -45,10 +48,11 @@ def search_journal(
 def create_journal_entry(
     payload: JournalCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Ingest a new journal entry: splits into chunks, embeds with Gemini,
-    and stores in the pgvector database.
+    and stores in the pgvector database for the current user.
     """
     if not payload.content.strip():
         raise HTTPException(
@@ -59,6 +63,7 @@ def create_journal_entry(
     created_chunks = ingest_journal_entry(
         db=db,
         content=payload.content,
+        user_id=current_user.id,
         title=payload.title,
     )
     return {
@@ -72,6 +77,7 @@ def create_journal_entry(
 def ask_journal(
     payload: JournalAskRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     RAG endpoint: answers user questions grounded in their personal journal entries.
@@ -82,7 +88,8 @@ def ask_journal(
             detail="Question cannot be empty."
         )
 
-    result = generate_rag_answer(db=db, question=payload.question)
+    result = generate_rag_answer(db=db, question=payload.question, user_id=current_user.id)
     return result
+
 
 
