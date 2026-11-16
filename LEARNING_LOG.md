@@ -602,3 +602,51 @@ Use this file to record what you learned each day, key mental models, architectu
   - Added `allow_registration` flag in `pydantic-settings` to enable locking down self-registration for single-user or invite-only deployment.
 - **Automated Multi-Tenant Isolation Testing**:
   - Implemented Test 9 (unauthenticated 401 checks) and Test 10 (data isolation verification where User B receives 404 when targeting User A's task IDs) in `app/tests/test_api.py`.
+
+
+---
+
+## Phase B: Data Model Gaps — Full CRUD, Streaks, Reminders, Categories, Dashboard
+
+### Key Concepts Learned
+
+- **Lazy Foreign Key Routing (task-to-goal)**:
+  - By adding `goal_id = Column(Integer, ForeignKey("goals.id", ondelete="SET NULL"))` and a `tasks = relationship("Task", lazy="selectin")` on the `Goal` model, SQLAlchemy automatically joins tasks when a goal is fetched. This lets us compute `progress_percentage` dynamically from real completion counts rather than storing a stale cached number.
+  - Pattern: `len(goal.tasks)` → `total_tasks`, `sum(1 for t in goal.tasks if t.is_completed)` → `completed_tasks`, then `progress = completed / total * 100`.
+
+- **Consecutive Date Streak Calculation**:
+  - Rather than a manual `current_streak` counter (which requires careful maintenance on insert and delete), we store one row per completion date in `habit_completions` and compute streaks from scratch on each read.
+  - Algorithm: sort the completion date set → walk backwards from today until a gap is found → that counts the current streak. Scan forward for max consecutive run → longest streak.
+  - **Why this is better**: The truth is always the actual completion history. Streak reads are O(n) over dates per habit; acceptable for personal use-scale data.
+
+- **SQLAlchemy `UniqueConstraint` on Two Columns**:
+  - `UniqueConstraint('habit_id', 'completed_date', name='uq_habit_completed_date')` enforces the invariant "one completion row per habit per day" at the database level, so the toggle endpoint is idempotent: `POST /habits/{id}/toggle-today` inserts if missing, deletes if present.
+
+- **User-Managed Category Rows vs. Hardcoded Enums**:
+  - Instead of a Python `Enum` or string constant list for categories, we created a `categories` table with `(user_id, name)` and a unique constraint. Each user owns their own tag taxonomy.
+  - Foreign key `category_id` on `tasks` and `habits` replaces the old free-text `category` column (old column kept for backwards compatibility during migration; new `category_id` is the source of truth going forward).
+
+- **Parent-Child Journal Architecture for RAG**:
+  - Separated journal entries into two layers: `journals` (full parent entry with title, content, timestamps) and `journal_entries` (pgvector embedding chunks linked by `journal_id`).
+  - On edit: if content changes, old chunk rows are deleted with `synchronize_session=False` to avoid SQLAlchemy identity map conflicts, then new chunks are freshly embedded and inserted.
+  - On delete: cascading `ondelete="CASCADE"` on the foreign key automatically purges all chunk rows when the parent journal is deleted, keeping pgvector clean.
+
+- **FastAPI Route Ordering (Static Before Parametric)**:
+  - Routes like `GET /journal/search` must be declared **before** `GET /journal/{journal_id}` in the router definition. FastAPI/Starlette matches routes in declaration order: a path-param route registered first will interpret the literal string `"search"` as a numeric ID, returning a 422 Unprocessable Entity instead of the intended endpoint.
+
+- **Alembic Named Constraints**:
+  - Unnamed foreign key constraints (`op.create_foreign_key(None, ...)`) generate anonymous constraint names in PostgreSQL that cannot be referenced in `downgrade()`. Always use explicit names (e.g., `'fk_tasks_goal_id'`) so that rollbacks work cleanly.
+
+- **Dashboard Aggregation Endpoint**:
+  - A single `GET /dashboard/summary` endpoint that queries tasks, habits, goals, and computes overdue counts, today's completions, habit streaks, and weekly completion rate in one response — eliminating N sequential frontend API calls for page load.
+
+### What Confused / Mistakes Made
+
+- **Route registration order**: `GET /journal/search` returned 422 when registered after `GET /journal/{journal_id}`. Fixing: move all fixed-path routes (`/search`, `/ask`) before the `/{journal_id}` path parameter routes.
+- **`synchronize_session` on DELETE**: `db.query(JournalEntry).filter(...).delete()` without `synchronize_session=False` triggered an SQLAlchemy SAWarning about expected row count mismatches when the ORM's identity map was out of sync after the parent session already tracked the objects. Using `synchronize_session=False` avoids the stale identity map lookup entirely.
+- **Migration downgrade unnamed constraints**: Alembic autogenerate emitted `op.drop_constraint(None, ...)` for foreign keys on `tasks`, `journal_entries`, and `habits` from the existing Phase A migration (which used unnamed constraints). Fixed by giving all Phase B constraints explicit names and ensuring the downgrade references only the named Phase B ones.
+
+### Questions for Further Exploration
+
+- When the `journals` table grows to thousands of entries, should the list endpoint paginate, or should cursor-based pagination be preferred over offset?
+- Is there a better way to batch-embed multiple chunks in a single Gemini API call to reduce roundtrips when re-embedding edited journal entries?

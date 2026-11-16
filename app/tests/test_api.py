@@ -1,5 +1,6 @@
 import pytest
 import uuid
+from datetime import datetime, date, timedelta
 from fastapi.testclient import TestClient
 from app.main import app
 
@@ -115,7 +116,7 @@ def test_goal_invalid_date_range():
 def test_journal_semantic_search():
     headers = get_auth_headers()
     # Ingest a journal entry first for this user so search has data
-    client.post("/journal/", json={
+    client.post("/journal", json={
         "title": "OAuth Bug Fix Note",
         "content": "Today was a productive sprint day. I fixed the OAuth bug with PyJWT decode."
     }, headers=headers)
@@ -141,7 +142,7 @@ def test_journal_semantic_search():
 def test_journal_rag_ask():
     headers = get_auth_headers()
     # Ingest an entry first
-    client.post("/journal/", json={
+    client.post("/journal", json={
         "title": "Sprint Note",
         "content": "Fixed the OAuth bug in the sprint."
     }, headers=headers)
@@ -168,6 +169,9 @@ def test_unauthenticated_requests_return_401():
     assert client.get("/habits").status_code == 401
     assert client.post("/habits", json={"name": "Hack", "frequency_type": "daily"}).status_code == 401
     assert client.get("/goals").status_code == 401
+    assert client.get("/categories").status_code == 401
+    assert client.get("/reminders").status_code == 401
+    assert client.get("/dashboard/summary").status_code == 401
     assert client.get("/journal/search?q=secret").status_code == 401
     assert client.post("/journal/ask", json={"question": "test"}).status_code == 401
 
@@ -203,3 +207,234 @@ def test_user_data_isolation():
     # User B attempts to delete User A's task -> 404 Not Found
     delete_direct = client.delete(f"/tasks/{task_a_id}", headers=headers_b)
     assert delete_direct.status_code == 404
+
+
+# 11. Phase B Test: Tasks Linked to Goals with Dynamic Progress
+def test_link_task_to_goal_updates_goal_progress():
+    headers = get_auth_headers()
+
+    # Create Goal
+    goal_res = client.post("/goals", json={"title": "Ship Phase B"}, headers=headers)
+    assert goal_res.status_code == 201
+    goal_id = goal_res.json()["id"]
+
+    # Create 2 Tasks linked to goal
+    t1 = client.post("/tasks", json={
+        "title": "Subtask 1",
+        "priority_level": "medium",
+        "goal_id": goal_id,
+        "is_completed": False
+    }, headers=headers).json()
+
+    t2 = client.post("/tasks", json={
+        "title": "Subtask 2",
+        "priority_level": "high",
+        "goal_id": goal_id,
+        "is_completed": False
+    }, headers=headers).json()
+
+    # Check goal progress: 0/2 completed -> 0%
+    goal_check = client.get(f"/goals/{goal_id}", headers=headers).json()
+    assert goal_check["total_tasks"] == 2
+    assert goal_check["completed_tasks"] == 0
+    assert goal_check["progress_percentage"] == 0.0
+
+    # Mark 1 task completed
+    client.patch(f"/tasks/{t1['id']}", json={"is_completed": True}, headers=headers)
+
+    # Check goal progress: 1/2 completed -> 50%
+    goal_check = client.get(f"/goals/{goal_id}", headers=headers).json()
+    assert goal_check["completed_tasks"] == 1
+    assert goal_check["progress_percentage"] == 50.0
+
+    # Mark 2nd task completed
+    client.patch(f"/tasks/{t2['id']}", json={"is_completed": True}, headers=headers)
+
+    # Check goal progress: 2/2 completed -> 100%
+    goal_check = client.get(f"/goals/{goal_id}", headers=headers).json()
+    assert goal_check["completed_tasks"] == 2
+    assert goal_check["progress_percentage"] == 100.0
+
+
+# 12. Phase B Test: Categories CRUD and Task Category Association
+def test_category_crud_and_task_link():
+    headers = get_auth_headers()
+
+    # Create Category
+    cat_res = client.post("/categories", json={"name": "Health", "color": "#10B981"}, headers=headers)
+    assert cat_res.status_code == 201
+    cat_id = cat_res.json()["id"]
+    assert cat_res.json()["name"] == "Health"
+
+    # Reject duplicate category name for same user
+    dup_res = client.post("/categories", json={"name": "Health"}, headers=headers)
+    assert dup_res.status_code == 400
+
+    # Link Task to Category
+    task_res = client.post("/tasks", json={
+        "title": "Drink 2L Water",
+        "priority_level": "medium",
+        "category_id": cat_id
+    }, headers=headers)
+    assert task_res.status_code == 201
+    assert task_res.json()["category_id"] == cat_id
+
+    # List categories
+    cats = client.get("/categories", headers=headers).json()
+    assert any(c["id"] == cat_id for c in cats)
+
+
+# 13. Phase B Test: Habit Completion History and Dynamic Streaks
+def test_habit_completion_toggle_and_dynamic_streaks():
+    headers = get_auth_headers()
+
+    # Create Habit
+    h_res = client.post("/habits", json={
+        "name": "Evening Walk",
+        "frequency_type": "daily",
+        "target_count": 1
+    }, headers=headers)
+    assert h_res.status_code == 201
+    habit_id = h_res.json()["id"]
+    assert h_res.json()["completed_today"] is False
+    assert h_res.json()["current_streak"] == 0
+
+    # Toggle today on
+    toggle_on = client.post(f"/habits/{habit_id}/toggle-today", headers=headers)
+    assert toggle_on.status_code == 200
+    data = toggle_on.json()
+    assert data["completed_today"] is True
+    assert data["current_streak"] == 1
+    assert data["longest_streak"] == 1
+
+    # Check Habit detail
+    h_detail = client.get(f"/habits/{habit_id}", headers=headers).json()
+    assert h_detail["completed_today"] is True
+    assert h_detail["current_streak"] == 1
+
+    # History contains today's date
+    hist = client.get(f"/habits/{habit_id}/history", headers=headers).json()
+    assert len(hist) == 1
+    assert hist[0] == date.today().isoformat()
+
+    # Toggle today off
+    toggle_off = client.post(f"/habits/{habit_id}/toggle-today", headers=headers)
+    assert toggle_off.status_code == 200
+    data_off = toggle_off.json()
+    assert data_off["completed_today"] is False
+    assert data_off["current_streak"] == 0
+
+
+# 14. Phase B Test: Reminders Full CRUD & Recurrence
+def test_reminders_crud():
+    headers = get_auth_headers()
+    due = (datetime.utcnow() + timedelta(hours=2)).isoformat()
+
+    # Create Reminder
+    rem_res = client.post("/reminders", json={
+        "title": "Team Standup",
+        "description": "Daily sync at 10 AM",
+        "due_time": due,
+        "recurrence": "daily"
+    }, headers=headers)
+    assert rem_res.status_code == 201
+    rem_data = rem_res.json()
+    rem_id = rem_data["id"]
+    assert rem_data["recurrence"] == "daily"
+    assert rem_data["is_active"] is True
+
+    # Get by ID
+    get_res = client.get(f"/reminders/{rem_id}", headers=headers)
+    assert get_res.status_code == 200
+
+    # Update
+    patch_res = client.patch(f"/reminders/{rem_id}", json={"is_active": False}, headers=headers)
+    assert patch_res.status_code == 200
+    assert patch_res.json()["is_active"] is False
+
+    # Filter active
+    active_rems = client.get("/reminders?is_active=true", headers=headers).json()
+    assert all(r["id"] != rem_id for r in active_rems)
+
+    # Delete
+    del_res = client.delete(f"/reminders/{rem_id}", headers=headers)
+    assert del_res.status_code == 204
+
+
+# 15. Phase B Test: Journal Full CRUD + Dynamic Re-embedding
+def test_journal_full_crud_and_reembedding():
+    headers = get_auth_headers()
+
+    # Create Journal
+    create_res = client.post("/journal", json={
+        "title": "Architectural Design",
+        "content": "Designing resilient microservices with event sourcing and CQRS patterns."
+    }, headers=headers)
+    assert create_res.status_code == 201
+    journal_data = create_res.json()
+    journal_id = journal_data["id"]
+    assert journal_data["title"] == "Architectural Design"
+
+    # List Journals (GET /journal)
+    list_res = client.get("/journal", headers=headers)
+    assert list_res.status_code == 200
+    items = list_res.json()
+    assert any(j["id"] == journal_id for j in items)
+
+    # Get single Journal by ID (GET /journal/{id})
+    single_res = client.get(f"/journal/{journal_id}", headers=headers)
+    assert single_res.status_code == 200
+    assert "event sourcing" in single_res.json()["content"]
+
+    # Update Journal (PATCH /journal/{id})
+    patch_res = client.patch(f"/journal/{journal_id}", json={
+        "title": "Architectural Design v2",
+        "content": "Updated microservice blueprint using distributed event buses."
+    }, headers=headers)
+    assert patch_res.status_code == 200
+    assert patch_res.json()["title"] == "Architectural Design v2"
+
+    # Delete Journal (DELETE /journal/{id})
+    del_res = client.delete(f"/journal/{journal_id}", headers=headers)
+    assert del_res.status_code == 204
+
+    # Verify 404 after deletion
+    assert client.get(f"/journal/{journal_id}", headers=headers).status_code == 404
+
+
+# 16. Phase B Test: Dashboard Summary Consolidated Endpoint
+def test_dashboard_summary():
+    headers = get_auth_headers()
+
+    # Create sample task, habit, and goal
+    client.post("/tasks", json={
+        "title": "Dashboard Test Task",
+        "priority_level": "medium",
+        "due_date": datetime.utcnow().isoformat(),
+        "is_completed": True
+    }, headers=headers)
+
+    client.post("/habits", json={
+        "name": "Dashboard Habit",
+        "frequency_type": "daily",
+        "target_count": 1
+    }, headers=headers)
+
+    client.post("/goals", json={
+        "title": "Dashboard Goal"
+    }, headers=headers)
+
+    # Call summary endpoint
+    res = client.get("/dashboard/summary", headers=headers)
+    assert res.status_code == 200
+    data = res.json()
+
+    assert "today" in data
+    assert "tasks" in data
+    assert "habits" in data
+    assert "goals" in data
+    assert "weekly_completion_rate" in data
+
+    assert data["tasks"]["completed_today"] >= 1
+    assert data["habits"]["total_habits"] >= 1
+    assert len(data["goals"]) >= 1

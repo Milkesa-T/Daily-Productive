@@ -18,11 +18,10 @@ def create_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Convert validated Pydantic fields directly into an ORM object bound to current user
     new_task = Task(**task_in.model_dump(), user_id=current_user.id)
     db.add(new_task)
     db.commit()
-    db.refresh(new_task)  # Loads system assigned ID and timestamps
+    db.refresh(new_task)
     if new_task.due_date:
         payload = {
             "event": "task_created",
@@ -67,15 +66,29 @@ def update_task(
     db_task = db.query(Task).filter(Task.id == task_id, Task.user_id == current_user.id).first()
     if not db_task:
         raise HTTPException(status_code=404, detail=f"Task with ID {task_id} not found")
-    
-    # Extract only fields explicitly sent by user in request payload
+
+    had_reminder = bool(db_task.reminder_id)
+    old_due = db_task.due_date
+
     update_data = task_in.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_task, key, value)
-        
+
     db.commit()
     db.refresh(db_task)
-    if db_task.reminder_id and any(f in update_data for f in ["title", "description", "due_date"]):
+
+    # If task did not have calendar event but now has a due_date added
+    if not had_reminder and db_task.due_date and (old_due is None):
+        payload = {
+            "event": "task_created",
+            "task_id": db_task.id,
+            "title": db_task.title,
+            "description": db_task.description,
+            "due_date": db_task.due_date.isoformat(),
+            "priority_level": db_task.priority_level,
+        }
+        background_tasks.add_task(trigger_n8n_webhook, payload)
+    elif db_task.reminder_id and any(f in update_data for f in ["title", "description", "due_date"]):
         payload = {
             "event": "task_updated",
             "task_id": db_task.id,
@@ -83,7 +96,7 @@ def update_task(
             "title": db_task.title,
             "description": db_task.description,
             "due_date": db_task.due_date.isoformat() if db_task.due_date else None,
-            "priority_level": db_task.priority_level, 
+            "priority_level": db_task.priority_level,
         }
         background_tasks.add_task(trigger_n8n_webhook, payload)
 
@@ -104,10 +117,9 @@ def delete_task(
         payload = {
             "event": "task_deleted",
             "task_id": db_task.id,
-            "reminder_id": db_task.reminder_id,     
+            "reminder_id": db_task.reminder_id,
         }
         background_tasks.add_task(trigger_n8n_webhook, payload)
     db.delete(db_task)
     db.commit()
-    return None  # HTTP 204 returns no body layout
-
+    return None

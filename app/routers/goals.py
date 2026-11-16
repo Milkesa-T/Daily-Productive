@@ -1,5 +1,5 @@
 from typing import List
-from fastapi import APIRouter, Depends, status 
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.models import Goal, User
@@ -8,9 +8,31 @@ from app.schemas.schema import GoalCreate, GoalResponse, GoalUpdate
 from app.core.exceptions import EntityNotFoundException, BusinessRuleViolationException
 
 router = APIRouter(prefix='/goals', tags=["Goals"])
+
+
 def validate_goal_dates(start_date, target_date):
     if start_date and target_date and target_date < start_date:
         raise BusinessRuleViolationException("Target date cannot be before start date")
+
+
+def format_goal_response(goal: Goal) -> GoalResponse:
+    tasks = goal.tasks or []
+    total = len(tasks)
+    completed = sum(1 for t in tasks if t.is_completed)
+    progress = round((completed / total) * 100.0, 1) if total > 0 else (goal.progress_percentage or 0.0)
+    return GoalResponse(
+        id=goal.id,
+        title=goal.title,
+        description=goal.description,
+        start_date=goal.start_date,
+        target_date=goal.target_date,
+        progress_percentage=progress,
+        total_tasks=total,
+        completed_tasks=completed,
+        created_at=goal.created_at,
+        updated_at=goal.updated_at,
+    )
+
 
 @router.post("", response_model=GoalResponse, status_code=status.HTTP_201_CREATED)
 def create_goal(
@@ -23,14 +45,17 @@ def create_goal(
     db.add(new_goal)
     db.commit()
     db.refresh(new_goal)
-    return new_goal
+    return format_goal_response(new_goal)
+
 
 @router.get("", response_model=List[GoalResponse])
 def get_all_goals(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return db.query(Goal).filter(Goal.user_id == current_user.id).all()
+    goals = db.query(Goal).filter(Goal.user_id == current_user.id).all()
+    return [format_goal_response(g) for g in goals]
+
 
 @router.get("/{goal_id}", response_model=GoalResponse)
 def get_goal_by_id(
@@ -41,7 +66,8 @@ def get_goal_by_id(
     goal = db.query(Goal).filter(Goal.id == goal_id, Goal.user_id == current_user.id).first()
     if not goal:
         raise EntityNotFoundException(entity_name="Goal", entity_id=goal_id)
-    return goal
+    return format_goal_response(goal)
+
 
 @router.patch("/{goal_id}", response_model=GoalResponse)
 def update_goal(
@@ -53,20 +79,21 @@ def update_goal(
     db_goal = db.query(Goal).filter(Goal.id == goal_id, Goal.user_id == current_user.id).first()
     if not db_goal:
         raise EntityNotFoundException(entity_name="Goal", entity_id=goal_id)
-    
+
     update_data = goal_in.model_dump(exclude_unset=True)
-    
+
     # Cross-field date validation for partial updates
     merged_start = update_data.get("start_date", db_goal.start_date)
     merged_target = update_data.get("target_date", db_goal.target_date)
     validate_goal_dates(merged_start, merged_target)
-    
+
     for key, value in update_data.items():
         setattr(db_goal, key, value)
-        
+
     db.commit()
     db.refresh(db_goal)
-    return db_goal
+    return format_goal_response(db_goal)
+
 
 @router.delete("/{goal_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_goal(
@@ -77,7 +104,7 @@ def delete_goal(
     db_goal = db.query(Goal).filter(Goal.id == goal_id, Goal.user_id == current_user.id).first()
     if not db_goal:
         raise EntityNotFoundException(entity_name="Goal", entity_id=goal_id)
-    
+
     db.delete(db_goal)
     db.commit()
     return None

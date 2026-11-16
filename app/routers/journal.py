@@ -3,21 +3,30 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models.models import User
+from app.models.models import Journal, User
 from app.routers.auth import get_current_user
 from app.schemas.schema import (
     JournalCreate,
+    JournalUpdate,
+    JournalResponse,
+    JournalSummaryResponse,
     JournalSearchResponse,
-    JournalSearchResult,
     JournalAskRequest,
     JournalAskResponse,
 )
-from app.services.ingest import ingest_journal_entry
+from app.services.ingest import (
+    create_journal_with_embeddings,
+    update_journal_with_embeddings,
+    delete_journal_with_embeddings,
+)
 from app.services.search import search_journal_entries
 from app.services.rag import generate_rag_answer
+from app.core.exceptions import EntityNotFoundException
 
 router = APIRouter(prefix="/journal", tags=["Journal"])
 
+
+# --- Specific Routes (Must come BEFORE parameterized /{journal_id}) ---
 
 @router.get("/search", response_model=JournalSearchResponse)
 def search_journal(
@@ -28,7 +37,6 @@ def search_journal(
 ):
     """
     Search journal entries semantically using pgvector cosine distance scoped to current user.
-    Returns the top-k most relevant chunks ordered by similarity score.
     """
     if not q.strip():
         raise HTTPException(
@@ -42,35 +50,6 @@ def search_journal(
         total_results=len(results),
         results=results,
     )
-
-
-@router.post("/", status_code=status.HTTP_201_CREATED)
-def create_journal_entry(
-    payload: JournalCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Ingest a new journal entry: splits into chunks, embeds with Gemini,
-    and stores in the pgvector database for the current user.
-    """
-    if not payload.content.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Journal content cannot be empty."
-        )
-
-    created_chunks = ingest_journal_entry(
-        db=db,
-        content=payload.content,
-        user_id=current_user.id,
-        title=payload.title,
-    )
-    return {
-        "message": f"Successfully ingested journal entry into {len(created_chunks)} chunk(s).",
-        "chunks_created": len(created_chunks),
-        "title": payload.title,
-    }
 
 
 @router.post("/ask", response_model=JournalAskResponse)
@@ -92,4 +71,122 @@ def ask_journal(
     return result
 
 
+# --- General CRUD Endpoints ---
 
+@router.get("", response_model=List[JournalSummaryResponse])
+def get_all_journal_entries(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List all journal entries for the current user, ordered newest first."""
+    journals = (
+        db.query(Journal)
+        .filter(Journal.user_id == current_user.id)
+        .order_by(Journal.created_at.desc())
+        .all()
+    )
+    results = []
+    for j in journals:
+        snippet = (j.content[:150] + "...") if len(j.content) > 150 else j.content
+        results.append(
+            JournalSummaryResponse(
+                id=j.id,
+                title=j.title,
+                snippet=snippet,
+                created_at=j.created_at,
+                updated_at=j.updated_at,
+                chunks_count=len(j.chunks) if j.chunks else 0,
+            )
+        )
+    return results
+
+
+@router.post("", response_model=JournalResponse, status_code=status.HTTP_201_CREATED)
+def create_journal_entry(
+    payload: JournalCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Create a new journal entry: saves parent entry, chunks text, generates
+    Gemini embeddings, and persists to pgvector.
+    """
+    if not payload.content.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Journal content cannot be empty."
+        )
+
+    journal = create_journal_with_embeddings(
+        db=db,
+        user_id=current_user.id,
+        content=payload.content,
+        title=payload.title,
+    )
+    return journal
+
+
+@router.get("/{journal_id}", response_model=JournalResponse)
+def get_journal_entry_by_id(
+    journal_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Retrieve a single journal entry by ID."""
+    journal = (
+        db.query(Journal)
+        .filter(Journal.id == journal_id, Journal.user_id == current_user.id)
+        .first()
+    )
+    if not journal:
+        raise EntityNotFoundException(entity_name="Journal", entity_id=journal_id)
+    return journal
+
+
+@router.patch("/{journal_id}", response_model=JournalResponse)
+def update_journal_entry(
+    journal_id: int,
+    payload: JournalUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Update a journal entry: if content is updated, old vector embeddings
+    are cleared and new embeddings are generated and persisted.
+    """
+    journal = (
+        db.query(Journal)
+        .filter(Journal.id == journal_id, Journal.user_id == current_user.id)
+        .first()
+    )
+    if not journal:
+        raise EntityNotFoundException(entity_name="Journal", entity_id=journal_id)
+
+    updated = update_journal_with_embeddings(
+        db=db,
+        journal=journal,
+        content=payload.content,
+        title=payload.title,
+    )
+    return updated
+
+
+@router.delete("/{journal_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_journal_entry(
+    journal_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Delete a journal entry and purge all its chunk embeddings from pgvector.
+    """
+    journal = (
+        db.query(Journal)
+        .filter(Journal.id == journal_id, Journal.user_id == current_user.id)
+        .first()
+    )
+    if not journal:
+        raise EntityNotFoundException(entity_name="Journal", entity_id=journal_id)
+
+    delete_journal_with_embeddings(db=db, journal=journal)
+    return None

@@ -1,34 +1,76 @@
-
 from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
-from datetime import datetime
-from typing import Optional, List
+from datetime import datetime, date
+from typing import Optional, List, Dict, Any
 
 
-# task schema 
+# --- Category Schemas ---
+
+class CategoryBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    color: Optional[str] = Field(default="#4F46E5", max_length=20)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name_not_empty(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("Category name cannot be empty")
+        return value.strip()
+
+
+class CategoryCreate(CategoryBase):
+    pass
+
+
+class CategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    color: Optional[str] = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name_optional(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and (not value or not value.strip()):
+            raise ValueError("Category name cannot be empty or just whitespace.")
+        return value.strip() if value else None
+
+
+class CategoryResponse(CategoryBase):
+    id: int
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+# --- Task Schemas ---
+
 class TaskBase(BaseModel):
     title: str
-    description: Optional[str]=None
-    due_date: Optional[datetime]=None
-    status: Optional[str]=None
+    description: Optional[str] = None
+    due_date: Optional[datetime] = None
+    status: Optional[str] = None
     priority_level: str
-    category: Optional[str]=None
-    is_completed: bool =False
-    reminder_id: Optional[str]=None
+    category: Optional[str] = None
+    category_id: Optional[int] = None
+    is_completed: bool = False
+    reminder_id: Optional[str] = None
+    goal_id: Optional[int] = None
 
     @field_validator("title")
     @classmethod
-    def validate_title_not_empty(cls, value:str) -> str:
+    def validate_title_not_empty(cls, value: str) -> str:
         if not value or not value.strip():
             raise ValueError("Title cannot be empty")
         return value.strip()
 
+
 class TaskCreate(TaskBase):
     pass
+
+
 class TaskResponse(TaskBase):
-    id: int 
+    id: int
     created_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
 
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
@@ -37,7 +79,9 @@ class TaskUpdate(BaseModel):
     status: Optional[str] = None
     priority_level: Optional[str] = None
     category: Optional[str] = None
+    category_id: Optional[int] = None
     is_completed: Optional[bool] = None
+    goal_id: Optional[int] = None
     reminder_id: Optional[str] = None
 
     @field_validator("title")
@@ -48,44 +92,59 @@ class TaskUpdate(BaseModel):
         return value.strip() if value else None
 
 
+# --- Habit Schemas ---
 
-
-    
 class HabitBase(BaseModel):
     name: str
     frequency_type: str = Field(..., min_length=1, max_length=100)
     target_count: int = Field(..., ge=1, description="Target count must be at least 1")
-    current_streak: int= Field(default=0, ge=0, description="Consecutive completions streak")
+    current_streak: int = Field(default=0, ge=0, description="Consecutive completions streak")
+    category_id: Optional[int] = None
 
-    @field_validator("name", "frequency_type")      
-    @classmethod 
-    def validate_name(cls, value:str):
+    @field_validator("name", "frequency_type")
+    @classmethod
+    def validate_name(cls, value: str):
         if not value or not value.strip():
             raise ValueError("Habit cannot be empty")
         return value.strip()
 
+
 class HabitCreate(HabitBase):
     pass
 
-        
+
 class HabitUpdate(BaseModel):
-    name:Optional[str]=None
-    frequency_type:Optional[str]=None
-    target_count:Optional[int]=Field(default=None, ge=1)
-    current_streak:Optional[int]=Field(default=None, ge=0)
+    name: Optional[str] = None
+    frequency_type: Optional[str] = None
+    target_count: Optional[int] = Field(default=None, ge=1)
+    current_streak: Optional[int] = Field(default=None, ge=0)
+    category_id: Optional[int] = None
+
 
 class HabitResponse(HabitBase):
     id: int
+    longest_streak: int = 0
+    completed_today: bool = False
     created_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
-   
+
+
+class HabitToggleResponse(BaseModel):
+    id: int
+    completed_today: bool
+    current_streak: int
+    longest_streak: int
+    message: str
+
+
+# --- Goal Schemas ---
 
 class GoalBase(BaseModel):
     title: str
-    description: Optional[str]=None
-    start_date: Optional[datetime]=None
-    target_date: Optional[datetime]=None
+    description: Optional[str] = None
+    start_date: Optional[date] = None
+    target_date: Optional[date] = None
     progress_percentage: float = Field(default=0.0, ge=0.0, le=100.0)
 
     @field_validator("title")
@@ -94,7 +153,7 @@ class GoalBase(BaseModel):
         if not value or not value.strip():
             raise ValueError("Goal title cannot be empty")
         return value.strip()
-    
+
     @model_validator(mode="after")
     def validate_date_range(self):
         """Cross-field validation: target_date must not be earlier than start_date."""
@@ -102,13 +161,17 @@ class GoalBase(BaseModel):
             if self.target_date < self.start_date:
                 raise ValueError("target_date cannot be earlier than start_date")
         return self
+
+
 class GoalCreate(GoalBase):
     pass
+
+
 class GoalUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
-    start_date: Optional[datetime] = None
-    target_date: Optional[datetime] = None
+    start_date: Optional[date] = None
+    target_date: Optional[date] = None
     progress_percentage: Optional[float] = Field(default=None, ge=0.0, le=100.0)
 
     @model_validator(mode="after")
@@ -117,44 +180,72 @@ class GoalUpdate(BaseModel):
             if self.target_date < self.start_date:
                 raise ValueError("target_date cannot be earlier than start_date")
         return self
+
+
 class GoalResponse(GoalBase):
     id: int
+    total_tasks: int = 0
+    completed_tasks: int = 0
     created_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
 
-if __name__ == "__main__":
-    print("--- 1. Testing Task Validation ---")
-    valid_task = TaskCreate(
-        title="  Build FastAPI app  ",
-        priority_level="high",
-        category="Dev"
-    )
-    print(f"Task created successfully. Cleaned title: '{valid_task.title}'")
-    print("\n--- 2. Testing Habit Bounds ---")
-    try:
-        HabitCreate(name="Gym", frequency_type="daily", target_count=0)
-    except Exception as e:
-        print(f"Correctly caught invalid target_count: {e.errors()[0]['msg']}")
-    print("\n--- 3. Testing Goal Date Range ---")
-    try:
-        GoalCreate(
-            title="Sprint Goal",
-            start_date=datetime(2026, 11, 1),
-            target_date=datetime(2026, 10, 1)  # Earlier than start_date!
-        )
-    except Exception as e:
-        print(f"Correctly caught date logic error: {e.errors()[0]['msg']}")
-    print("\nAll schema validations passed!")
+# --- Reminder Schemas ---
+
+class ReminderBase(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    due_time: datetime
+    recurrence: Optional[str] = Field(default="none", description="none, daily, weekly, weekdays, monthly")
+    is_active: bool = True
+
+    @field_validator("title")
+    @classmethod
+    def validate_title_not_empty(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("Reminder title cannot be empty")
+        return value.strip()
+
+
+class ReminderCreate(ReminderBase):
+    pass
+
+
+class ReminderUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    due_time: Optional[datetime] = None
+    recurrence: Optional[str] = None
+    is_active: Optional[bool] = None
+
+    @field_validator("title")
+    @classmethod
+    def validate_title_optional(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and (not value or not value.strip()):
+            raise ValueError("Reminder title cannot be empty or just whitespace.")
+        return value.strip() if value else None
+
+
+class ReminderResponse(ReminderBase):
+    id: int
+    gcal_event_id: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+# --- User Schemas ---
 
 class UserCreate(BaseModel):
     email: str
     password: str
+
+
 class UserResponse(BaseModel):
     id: int
     email: str
-    is_active:bool
+    is_active: bool
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
@@ -164,6 +255,30 @@ class UserResponse(BaseModel):
 class JournalCreate(BaseModel):
     title: Optional[str] = None
     content: str
+
+
+class JournalUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+
+
+class JournalResponse(BaseModel):
+    id: int
+    title: Optional[str] = None
+    content: str
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class JournalSummaryResponse(BaseModel):
+    id: int
+    title: Optional[str] = None
+    snippet: str
+    created_at: datetime
+    updated_at: datetime
+    chunks_count: int = 0
+    model_config = ConfigDict(from_attributes=True)
 
 
 class JournalSearchResult(BaseModel):
@@ -201,9 +316,22 @@ class JournalAskResponse(BaseModel):
     sources: List[JournalSource]
 
 
+# --- Dashboard Schemas ---
+
+class DashboardSummaryResponse(BaseModel):
+    today: str
+    tasks: Dict[str, Any]
+    habits: Dict[str, Any]
+    goals: List[Dict[str, Any]]
+    weekly_completion_rate: float
+
+
+# --- Auth Token Schemas ---
+
 class Token(BaseModel):
     access_token: str
     token_type: str
+
 
 class TokenData(BaseModel):
     email: Optional[str] = None
