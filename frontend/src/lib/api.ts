@@ -16,7 +16,29 @@ export const setToken = (token: string): void => {
 export const removeToken = (): void => {
   if (typeof window !== "undefined") {
     localStorage.removeItem("access_token");
+    localStorage.removeItem("user_email");
   }
+};
+
+export const getUserEmail = (): string | null => {
+  if (typeof window !== "undefined") {
+    const stored = localStorage.getItem("user_email");
+    if (stored) return stored;
+    const token = getToken();
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        return payload.sub || null;
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+};
+
+export const logoutUser = (): void => {
+  removeToken();
 };
 
 export const getAuthHeaders = (contentType: string = "application/json"): HeadersInit => {
@@ -48,6 +70,9 @@ export async function loginUser(email: string, password: string) {
 
   const data = await res.json();
   setToken(data.access_token);
+  if (typeof window !== "undefined") {
+    localStorage.setItem("user_email", email);
+  }
   return data;
 }
 
