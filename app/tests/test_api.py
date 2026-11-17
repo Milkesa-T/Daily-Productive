@@ -438,3 +438,84 @@ def test_dashboard_summary():
     assert data["tasks"]["completed_today"] >= 1
     assert data["habits"]["total_habits"] >= 1
     assert len(data["goals"]) >= 1
+
+# 17. Phase C Test: Reminder Calendar Sync Callback & GCal Event ID Persistence
+def test_reminder_calendar_event_id_persistence():
+    headers = get_auth_headers()
+    due = (datetime.utcnow() + timedelta(days=1)).isoformat()
+
+    # Create Reminder
+    rem = client.post("/reminders", json={
+        "title": "Sync to Google Calendar",
+        "due_time": due,
+        "recurrence": "weekly"
+    }, headers=headers).json()
+    rem_id = rem["id"]
+    assert rem["gcal_event_id"] is None
+
+    # Simulate n8n callback updating gcal_event_id
+    simulated_event_id = f"gcal_{uuid.uuid4().hex[:12]}"
+    patch_res = client.patch(f"/reminders/{rem_id}", json={
+        "gcal_event_id": simulated_event_id
+    }, headers=headers)
+    assert patch_res.status_code == 200
+    assert patch_res.json()["gcal_event_id"] == simulated_event_id
+
+    # Verify persistent state
+    fetched = client.get(f"/reminders/{rem_id}", headers=headers).json()
+    assert fetched["gcal_event_id"] == simulated_event_id
+
+
+# 18. Phase C Test: GitHub Repositories & Commits Ingestion and User Isolation
+def test_github_repos_and_commits_sync():
+    headers = get_auth_headers()
+    repo_name = f"test-repo-{uuid.uuid4().hex[:6]}"
+    full_name = f"octocat/{repo_name}"
+
+    # 1. Register repository
+    repo_res = client.post("/github/repos", json={
+        "name": repo_name,
+        "full_name": full_name,
+        "url": f"https://github.com/{full_name}"
+    }, headers=headers)
+    assert repo_res.status_code == 201
+    repo_data = repo_res.json()
+    repo_id = repo_data["id"]
+    assert repo_data["full_name"] == full_name
+
+    # 2. Ingest batch of commits
+    commits_payload = {
+        "repository_full_name": full_name,
+        "commits": [
+            {
+                "commit_hash": "a1b2c3d4e5f678901234567890abcdef12345678",
+                "message": "feat: initial commit",
+                "author_name": "Octocat",
+                "committed_at": datetime.utcnow().isoformat(),
+                "url": f"https://github.com/{full_name}/commit/a1b2c3d"
+            },
+            {
+                "commit_hash": "b2c3d4e5f678901234567890abcdef1234567890",
+                "message": "fix: resolve memory leak",
+                "author_name": "Octocat",
+                "committed_at": datetime.utcnow().isoformat(),
+                "url": f"https://github.com/{full_name}/commit/b2c3d4e"
+            }
+        ]
+    }
+    commits_res = client.post("/github/commits", json=commits_payload, headers=headers)
+    assert commits_res.status_code == 201
+    commits = commits_res.json()
+    assert len(commits) == 2
+
+    # 3. List commits for user
+    list_commits = client.get(f"/github/commits?repo_id={repo_id}", headers=headers).json()
+    assert len(list_commits) == 2
+    hashes = [c["commit_hash"] for c in list_commits]
+    assert "a1b2c3d4e5f678901234567890abcdef12345678" in hashes
+
+    # 4. Idempotent re-ingestion does not duplicate rows
+    re_ingest = client.post("/github/commits", json=commits_payload, headers=headers)
+    assert re_ingest.status_code == 201
+    after_reingest = client.get(f"/github/commits?repo_id={repo_id}", headers=headers).json()
+    assert len(after_reingest) == 2

@@ -1,0 +1,78 @@
+{
+  "name": "Daily-Productive - 8AM Scheduled Daily Digest",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "digest-schedule-trigger",
+      "name": "Daily at 8:00 AM Cron",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [100, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://127.0.0.1:8000/dashboard/summary",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "fetch-dashboard-summary",
+      "name": "FastAPI - Get Dashboard Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [320, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst today = data.today || new Date().toISOString().split('T')[0];\nconst tasks = data.tasks || { total_today: 0, completed_today: 0, overdue_count: 0, items: [] };\nconst habits = data.habits || { total_habits: 0, completed_today: 0, items: [] };\nconst goals = data.goals || [];\n\nlet digest = `🌅 **Good Morning! Here is your Daily-Productive Briefing for ${today}**\\n\\n`;\n\ndigest += `📋 **Today's Tasks (${tasks.total_today} total, ${tasks.overdue_count} overdue)**:\\n`;\nif (tasks.items && tasks.items.length > 0) {\n  tasks.items.slice(0, 5).forEach(t => {\n    const status = t.is_completed ? '✅' : (t.is_overdue ? '⚠️ OVERDUE' : '⏳');\n    digest += `- ${status} ${t.title} [${t.priority_level.toUpperCase()}]\\n`;\n  });\n} else {\n  digest += `  - No pending tasks due today. Great job!\\n`;\n}\n\ndigest += `\\n🔥 **Active Habit Streaks (${habits.completed_today}/${habits.total_habits} done)**:\\n`;\nif (habits.items && habits.items.length > 0) {\n  habits.items.forEach(h => {\n    const mark = h.completed_today ? '✅' : '⚪';\n    digest += `- ${mark} ${h.name}: ${h.current_streak} day streak (Best: ${h.longest_streak})\\n`;\n  });\n} else {\n  digest += `  - No active habits configured.\\n`;\n}\n\ndigest += `\\n🎯 **Active Goals Progress**:\\n`;\nif (goals && goals.length > 0) {\n  goals.forEach(g => {\n    digest += `- 🎯 **${g.title}**: ${g.progress_percentage}% complete (${g.completed_tasks}/${g.total_tasks} tasks)\\n`;\n  });\n} else {\n  digest += `  - No active goals linked.\\n`;\n}\n\ndigest += `\\n📈 **7-Day Task Completion Rate**: ${data.weekly_completion_rate}%\\n`;\ndigest += `\\n*Have a focused, productive day!*`;\n\nreturn [{\n  json: {\n    date: today,\n    digest_markdown: digest,\n    tasks_count: tasks.total_today,\n    habits_count: habits.total_habits\n  }\n}];"
+      },
+      "id": "compose-digest-markdown",
+      "name": "Compose Executive Briefing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [540, 300]
+    }
+  ],
+  "connections": {
+    "Daily at 8:00 AM Cron": {
+      "main": [
+        [
+          {
+            "node": "FastAPI - Get Dashboard Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FastAPI - Get Dashboard Summary": {
+      "main": [
+        [
+          {
+            "node": "Compose Executive Briefing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {}
+}

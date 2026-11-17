@@ -650,3 +650,49 @@ Use this file to record what you learned each day, key mental models, architectu
 
 - When the `journals` table grows to thousands of entries, should the list endpoint paginate, or should cursor-based pagination be preferred over offset?
 - Is there a better way to batch-embed multiple chunks in a single Gemini API call to reduce roundtrips when re-embedding edited journal entries?
+
+
+---
+
+## Phase C: n8n Automations & Integrations — Calendar Sync, GitHub Decoupling, Workflow Version Control
+
+### Key Concepts Learned
+
+- **Asynchronous Webhook Event Dispatching**:
+  - Used FastAPI's `BackgroundTasks` to decouple external webhook delivery from the HTTP request/response cycle.
+  - Creating or mutating a `Task` or `Reminder` returns HTTP 201/200 instantly to the user while `trigger_n8n_webhook()` executes in the background. Network lag or timeouts on n8n will never stall user operations.
+
+- **Bi-Directional Calendar Event Lifecycle**:
+  - Implemented event routing for `reminder_created`, `reminder_updated`, and `reminder_deleted` payloads mirroring the task flow.
+  - The n8n switch router routes events to Google Calendar nodes:
+    1. Create: inserts a Google Calendar event with a 15-minute popup notification, capturing the generated event ID.
+    2. Callback: n8n sends a `PATCH /reminders/{id}` containing `gcal_event_id` to establish bidirectional linkage.
+    3. Update/Delete: uses the persisted `gcal_event_id` to mutate or remove the calendar event directly.
+
+- **Decoupling Domain Entities (GitHub Commits vs User Tasks)**:
+  - Previously, automated GitHub sync inserted commit records into the `tasks` table with arbitrary priority levels.
+  - Created dedicated `repositories` and `commits` tables with relational integrity (`repository_id` FK with `CASCADE`), an indexed `commit_hash`, and a compound `UniqueConstraint('repository_id', 'commit_hash')`.
+  - The `POST /github/commits` endpoint guarantees idempotent ingest: multiple sync runs of the same commit sha never result in duplicate records.
+
+- **Database Connection Pool Resilience (`pool_pre_ping`)**:
+  - Supabase poolers over cloud connections (like `aws-1-eu-central-1.pooler.supabase.com`) terminate idle TCP connections. When an application attempts to close or rollback a dead connection, `psycopg2` raises `server closed the connection unexpectedly`.
+  - Setting `pool_pre_ping=True` and `pool_recycle=300` in SQLAlchemy's `create_engine` tests connections before checkout, silently reconnecting if the server dropped the socket.
+
+- **Security Hardening (Strict Environment Contracts)**:
+  - Removed insecure hardcoded default values for `secret_key` in `Settings`. Enforced a minimum 32-character validation rule on startup via Pydantic `@field_validator`, preventing token forgery vulnerabilities.
+
+- **Declarative Workflow Version Control**:
+  - Exported complete n8n workflow definitions (`google-calendar-sync.json`, `github-sync.json`, `daily-digest.json`) into the repository under `n8n/workflows/`.
+  - Workflows can now be versioned, reviewed, and imported onto any fresh n8n instance without data loss.
+
+### What Confused / Mistakes Made
+
+- **Supabase Pooler Connection Drops**:
+  - Remote pooled PostgreSQL connections timed out during long-running test suites. Resolved by configuring `pool_pre_ping=True` in `app/core/database.py`.
+- **Idempotent Webhook Callbacks**:
+  - n8n callbacks updating `gcal_event_id` require `gcal_event_id` in `ReminderUpdate` schema without triggering an infinite webhook loop. Guarded webhook emission so that pure event ID updates do not re-emit `reminder_updated`.
+
+### Questions for Further Exploration
+
+- Can we introduce retry backoff queues (like Celery or Redis Streams) if n8n is temporarily offline during background task execution?
+- How can we extend the daily digest to send rich Push notifications or Telegram messages directly from n8n?

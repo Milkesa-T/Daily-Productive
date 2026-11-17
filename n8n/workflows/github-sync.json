@@ -1,0 +1,116 @@
+{
+  "name": "Daily-Productive - GitHub Repository & Commit Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger (Every 2h)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [100, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.github.com/repos/Milkesa-T/Daily-Productive/commits?per_page=10",
+        "authentication": "none",
+        "headers": {
+          "values": [
+            {
+              "name": "User-Agent",
+              "value": "Daily-Productive-Sync"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github.v3+json"
+            }
+          ]
+        }
+      },
+      "id": "fetch-github-commits",
+      "name": "Fetch GitHub Commits",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [320, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const commits = $input.all().map(item => ({\n  commit_hash: item.json.sha,\n  message: item.json.commit.message,\n  author_name: item.json.commit.author ? item.json.commit.author.name : 'Unknown',\n  committed_at: item.json.commit.author ? item.json.commit.author.date : new Date().toISOString(),\n  url: item.json.html_url\n}));\n\nreturn [{\n  json: {\n    repository_full_name: 'Milkesa-T/Daily-Productive',\n    commits: commits\n  }\n}];"
+      },
+      "id": "format-commit-payload",
+      "name": "Format Commit Batch Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [540, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/github/commits",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "send-to-fastapi",
+      "name": "FastAPI - Ingest Commits",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [760, 300]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Every 2h)": {
+      "main": [
+        [
+          {
+            "node": "Fetch GitHub Commits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch GitHub Commits": {
+      "main": [
+        [
+          {
+            "node": "Format Commit Batch Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Commit Batch Payload": {
+      "main": [
+        [
+          {
+            "node": "FastAPI - Ingest Commits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {}
+}

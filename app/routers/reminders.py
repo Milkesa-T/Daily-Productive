@@ -1,8 +1,9 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, status, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.webhook import trigger_n8n_webhook
 from app.models.models import Reminder, User
 from app.routers.auth import get_current_user
 from app.schemas.schema import ReminderCreate, ReminderUpdate, ReminderResponse
@@ -14,6 +15,7 @@ router = APIRouter(prefix="/reminders", tags=["Reminders"])
 @router.post("", response_model=ReminderResponse, status_code=status.HTTP_201_CREATED)
 def create_reminder(
     reminder_in: ReminderCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -24,6 +26,17 @@ def create_reminder(
     db.add(reminder)
     db.commit()
     db.refresh(reminder)
+
+    payload = {
+        "event": "reminder_created",
+        "reminder_id": reminder.id,
+        "title": reminder.title,
+        "description": reminder.description,
+        "due_time": reminder.due_time.isoformat(),
+        "recurrence": reminder.recurrence,
+        "is_active": reminder.is_active,
+    }
+    background_tasks.add_task(trigger_n8n_webhook, payload)
     return reminder
 
 
@@ -58,6 +71,7 @@ def get_reminder_by_id(
 def update_reminder(
     reminder_id: int,
     reminder_in: ReminderUpdate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -74,12 +88,27 @@ def update_reminder(
 
     db.commit()
     db.refresh(reminder)
+
+    if any(k in update_data for k in ["title", "description", "due_time", "recurrence", "is_active"]):
+        payload = {
+            "event": "reminder_updated",
+            "reminder_id": reminder.id,
+            "gcal_event_id": reminder.gcal_event_id,
+            "title": reminder.title,
+            "description": reminder.description,
+            "due_time": reminder.due_time.isoformat(),
+            "recurrence": reminder.recurrence,
+            "is_active": reminder.is_active,
+        }
+        background_tasks.add_task(trigger_n8n_webhook, payload)
+
     return reminder
 
 
 @router.delete("/{reminder_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_reminder(
     reminder_id: int,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -89,6 +118,14 @@ def delete_reminder(
     ).first()
     if not reminder:
         raise EntityNotFoundException(entity_name="Reminder", entity_id=reminder_id)
+
+    if reminder.gcal_event_id:
+        payload = {
+            "event": "reminder_deleted",
+            "reminder_id": reminder.id,
+            "gcal_event_id": reminder.gcal_event_id,
+        }
+        background_tasks.add_task(trigger_n8n_webhook, payload)
 
     db.delete(reminder)
     db.commit()

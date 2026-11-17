@@ -218,6 +218,7 @@ class ReminderUpdate(BaseModel):
     due_time: Optional[datetime] = None
     recurrence: Optional[str] = None
     is_active: Optional[bool] = None
+    gcal_event_id: Optional[str] = None
 
     @field_validator("title")
     @classmethod
@@ -335,3 +336,49 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     email: Optional[str] = None
+
+
+# --- GitHub Integration Schemas ---
+
+class RepositoryBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    full_name: str = Field(..., min_length=1, max_length=200)
+    url: Optional[str] = None
+    description: Optional[str] = None
+    is_active: bool = True
+
+
+class RepositoryCreate(RepositoryBase):
+    pass
+
+
+class RepositoryResponse(RepositoryBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    commits_count: int = 0
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CommitBase(BaseModel):
+    commit_hash: str = Field(..., min_length=4, max_length=64)
+    message: str = Field(..., min_length=1)
+    author_name: Optional[str] = None
+    committed_at: datetime
+    url: Optional[str] = None
+
+
+class CommitCreate(CommitBase):
+    pass
+
+
+class CommitBatchCreate(BaseModel):
+    repository_full_name: str
+    commits: List[CommitCreate]
+
+
+class CommitResponse(CommitBase):
+    id: int
+    repository_id: int
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)

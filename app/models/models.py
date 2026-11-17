@@ -135,3 +135,41 @@ class JournalEntry(Base):
     chunk_index = Column(Integer, default=0)
     embedding = Column(Vector(768), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Repository(Base):
+    __tablename__ = "repositories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    full_name = Column(String, nullable=False)
+    url = Column(String, nullable=True)
+    description = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    commits = relationship("Commit", backref="repository", cascade="all, delete-orphan", lazy="selectin")
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'full_name', name='uq_user_repository'),
+    )
+
+
+class Commit(Base):
+    __tablename__ = "commits"
+
+    id = Column(Integer, primary_key=True, index=True)
+    repository_id = Column(Integer, ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    commit_hash = Column(String, nullable=False, index=True)
+    message = Column(Text, nullable=False)
+    author_name = Column(String, nullable=True)
+    committed_at = Column(DateTime, nullable=False)
+    url = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint('repository_id', 'commit_hash', name='uq_repo_commit_hash'),
+    )

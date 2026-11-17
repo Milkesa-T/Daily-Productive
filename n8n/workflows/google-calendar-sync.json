@@ -1,0 +1,212 @@
+{
+  "name": "Daily-Productive - Google Calendar Event Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "daily-productive",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "webhookId": "daily-productive"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.body.event }}",
+                    "operation": "contains",
+                    "value2": "created"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.body.event }}",
+                    "operation": "contains",
+                    "value2": "updated"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.body.event }}",
+                    "operation": "contains",
+                    "value2": "deleted"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "event-router",
+      "name": "Switch on Event Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [320, 300]
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "primary",
+          "mode": "list"
+        },
+        "start": "={{ $json.body.due_date || $json.body.due_time }}",
+        "end": "={{ new Date(new Date($json.body.due_date || $json.body.due_time).getTime() + 30 * 60000).toISOString() }}",
+        "summary": "={{ $json.body.title }}",
+        "description": "={{ $json.body.description || 'Created by Daily-Productive' }}",
+        "additionalFields": {
+          "reminders": {
+            "useDefault": false,
+            "overrides": [
+              {
+                "method": "popup",
+                "minutes": 15
+              }
+            ]
+          }
+        }
+      },
+      "id": "gcal-create",
+      "name": "Google Calendar - Create Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.1,
+      "position": [560, 160],
+      "credentials": {
+        "googleCalendarOAuth2": {
+          "id": "daily-productive-gcal",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $node['Webhook Trigger'].json.body.task_id ? 'http://127.0.0.1:8000/tasks/' + $node['Webhook Trigger'].json.body.task_id : 'http://127.0.0.1:8000/reminders/' + $node['Webhook Trigger'].json.body.reminder_id }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($node['Webhook Trigger'].json.body.task_id ? { reminder_id: $json.id } : { gcal_event_id: $json.id }) }}"
+      },
+      "id": "save-event-id",
+      "name": "FastAPI - Save Event ID Callback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [780, 160]
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "primary",
+          "mode": "list"
+        },
+        "eventId": "={{ $json.body.reminder_id || $json.body.gcal_event_id }}",
+        "updateFields": {
+          "summary": "={{ $json.body.title }}",
+          "description": "={{ $json.body.description || '' }}",
+          "start": "={{ $json.body.due_date || $json.body.due_time }}",
+          "end": "={{ new Date(new Date($json.body.due_date || $json.body.due_time).getTime() + 30 * 60000).toISOString() }}"
+        }
+      },
+      "id": "gcal-update",
+      "name": "Google Calendar - Update Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.1,
+      "position": [560, 300],
+      "credentials": {
+        "googleCalendarOAuth2": {
+          "id": "daily-productive-gcal",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "primary",
+          "mode": "list"
+        },
+        "eventId": "={{ $json.body.reminder_id || $json.body.gcal_event_id }}"
+      },
+      "id": "gcal-delete",
+      "name": "Google Calendar - Delete Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.1,
+      "position": [560, 440],
+      "credentials": {
+        "googleCalendarOAuth2": {
+          "id": "daily-productive-gcal",
+          "name": "Google Calendar account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Switch on Event Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch on Event Type": {
+      "main": [
+        [
+          {
+            "node": "Google Calendar - Create Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Google Calendar - Update Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Google Calendar - Delete Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Calendar - Create Event": {
+      "main": [
+        [
+          {
+            "node": "FastAPI - Save Event ID Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {}
+}

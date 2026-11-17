@@ -1,12 +1,23 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.routers import health, habits, tasks, goals, auth, journal, categories, reminders, dashboard
+from app.routers import (
+    health,
+    habits,
+    tasks,
+    goals,
+    auth,
+    journal,
+    categories,
+    reminders,
+    dashboard,
+    github,
+)
 
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    debug=settings.debug
+    debug=settings.debug,
 )
 
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
@@ -27,6 +38,7 @@ app.include_router(journal.router)
 app.include_router(categories.router)
 app.include_router(reminders.router)
 app.include_router(dashboard.router)
+app.include_router(github.router)
 
 
 @app.get("/")
