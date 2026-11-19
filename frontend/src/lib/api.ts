@@ -2,7 +2,20 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 export const getToken = (): string | null => {
   if (typeof window !== "undefined") {
-    return localStorage.getItem("access_token");
+    const token = localStorage.getItem("access_token");
+    if (!token) return null;
+    try {
+      // Proactively check if the JWT has expired
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      if (payload.exp && payload.exp * 1000 < Date.now()) {
+        removeToken();
+        return null;
+      }
+    } catch {
+      removeToken();
+      return null;
+    }
+    return token;
   }
   return null;
 };
@@ -39,6 +52,9 @@ export const getUserEmail = (): string | null => {
 
 export const logoutUser = (): void => {
   removeToken();
+  if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+    window.location.href = "/login";
+  }
 };
 
 export const getAuthHeaders = (contentType: string = "application/json"): HeadersInit => {
@@ -48,6 +64,35 @@ export const getAuthHeaders = (contentType: string = "application/json"): Header
   if (token) headers["Authorization"] = `Bearer ${token}`;
   return headers;
 };
+
+async function handleResponse<T>(res: Response, fallbackError: string): Promise<T> {
+  if (res.status === 401) {
+    removeToken();
+    if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+      window.location.href = "/login";
+    }
+    throw new Error("Session expired. Please log in again.");
+  }
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || fallbackError);
+  }
+  return res.json();
+}
+
+async function handleEmptyResponse(res: Response, fallbackError: string): Promise<void> {
+  if (res.status === 401) {
+    removeToken();
+    if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+      window.location.href = "/login";
+    }
+    throw new Error("Session expired. Please log in again.");
+  }
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || fallbackError);
+  }
+}
 
 export async function loginUser(email: string, password: string) {
   // OAuth2PasswordRequestForm requires form-urlencoded data (username + password)
@@ -118,8 +163,7 @@ export async function fetchTasks(): Promise<TaskItem[]> {
   const res = await fetch(`${API_URL}/tasks`, {
     headers: getAuthHeaders(),
   });
-  if (!res.ok) throw new Error("Failed to fetch tasks");
-  return res.json();
+  return handleResponse<TaskItem[]>(res, "Failed to fetch tasks");
 }
 export async function createTask(task: {
   title: string;
@@ -133,8 +177,7 @@ export async function createTask(task: {
     headers: getAuthHeaders(),
     body: JSON.stringify(task),
   });
-  if (!res.ok) throw new Error("Failed to create task");
-  return res.json();
+  return handleResponse<TaskItem>(res, "Failed to create task");
 }
 export async function updateTask(
   id: number,
@@ -145,23 +188,21 @@ export async function updateTask(
     headers: getAuthHeaders(),
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error("Failed to update task");
-  return res.json();
+  return handleResponse<TaskItem>(res, "Failed to update task");
 }
 export async function deleteTask(id: number): Promise<void> {
   const res = await fetch(`${API_URL}/tasks/${id}`, {
     method: "DELETE",
     headers: getAuthHeaders(),
   });
-  if (!res.ok) throw new Error("Failed to delete task");
+  return handleEmptyResponse(res, "Failed to delete task");
 }
 // --- HABIT API CALLS ---
 export async function fetchHabits(): Promise<HabitItem[]> {
   const res = await fetch(`${API_URL}/habits`, {
     headers: getAuthHeaders(),
   });
-  if (!res.ok) throw new Error("Failed to fetch habits");
-  return res.json();
+  return handleResponse<HabitItem[]>(res, "Failed to fetch habits");
 }
 export async function createHabit(habit: {
   name: string;
@@ -173,8 +214,7 @@ export async function createHabit(habit: {
     headers: getAuthHeaders(),
     body: JSON.stringify(habit),
   });
-  if (!res.ok) throw new Error("Failed to create habit");
-  return res.json();
+  return handleResponse<HabitItem>(res, "Failed to create habit");
 }
 export async function updateHabit(
   id: number,
@@ -185,15 +225,14 @@ export async function updateHabit(
     headers: getAuthHeaders(),
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error("Failed to update habit");
-  return res.json();
+  return handleResponse<HabitItem>(res, "Failed to update habit");
 }
 export async function deleteHabit(id: number): Promise<void> {
   const res = await fetch(`${API_URL}/habits/${id}`, {
     method: "DELETE",
     headers: getAuthHeaders(),
   });
-  if (!res.ok) throw new Error("Failed to delete habit");
+  return handleEmptyResponse(res, "Failed to delete habit");
 }
 
 // --- DASHBOARD API CALLS ---
@@ -249,8 +288,7 @@ export async function fetchDashboardSummary(): Promise<DashboardSummary> {
   const res = await fetch(`${API_URL}/dashboard/summary`, {
     headers: getAuthHeaders(),
   });
-  if (!res.ok) throw new Error("Failed to fetch dashboard summary");
-  return res.json();
+  return handleResponse<DashboardSummary>(res, "Failed to fetch dashboard summary");
 }
 
 export async function toggleHabitToday(habitId: number): Promise<{
@@ -264,16 +302,20 @@ export async function toggleHabitToday(habitId: number): Promise<{
     method: "POST",
     headers: getAuthHeaders(),
   });
-  if (!res.ok) throw new Error("Failed to toggle habit");
-  return res.json();
+  return handleResponse<{
+    id: number;
+    completed_today: boolean;
+    current_streak: number;
+    longest_streak: number;
+    message: string;
+  }>(res, "Failed to toggle habit");
 }
 
 export async function fetchHabitHistory(habitId: number): Promise<string[]> {
   const res = await fetch(`${API_URL}/habits/${habitId}/history`, {
     headers: getAuthHeaders(),
   });
-  if (!res.ok) throw new Error("Failed to fetch habit history");
-  return res.json();
+  return handleResponse<string[]>(res, "Failed to fetch habit history");
 }
 
 // --- RAG / CHAT API CALLS ---
@@ -305,12 +347,6 @@ export async function askJournal(question: string): Promise<AskJournalResponse> 
     headers: getAuthHeaders(),
     body: JSON.stringify({ question }),
   });
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.detail || "Failed to get an answer from the assistant");
-  }
-
-  return res.json();
+  return handleResponse<AskJournalResponse>(res, "Failed to get an answer from the assistant");
 }
 
