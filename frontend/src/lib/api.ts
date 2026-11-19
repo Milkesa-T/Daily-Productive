@@ -146,6 +146,8 @@ export interface TaskItem {
   priority_level: string;
   category?: string | null;
   is_completed: boolean;
+  goal_id?: number | null;
+  category_id?: number | null;
   reminder_id?: string | null;
   created_at: string;
 }
@@ -158,6 +160,34 @@ export interface HabitItem {
   current_streak: number;
   created_at: string;
 }
+
+export interface GoalItem {
+  id: number;
+  title: string;
+  description?: string | null;
+  start_date?: string | null;
+  target_date?: string | null;
+  progress_percentage: number;
+  total_tasks: number;
+  completed_tasks: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GoalCreateInput {
+  title: string;
+  description?: string;
+  start_date?: string;
+  target_date?: string;
+}
+
+export interface GoalUpdateInput {
+  title?: string;
+  description?: string;
+  start_date?: string;
+  target_date?: string;
+}
+
 // --- TASK API CALLS ---
 export async function fetchTasks(): Promise<TaskItem[]> {
   const res = await fetch(`${API_URL}/tasks`, {
@@ -171,6 +201,7 @@ export async function createTask(task: {
   due_date?: string;
   priority_level: string;
   category?: string;
+  goal_id?: number | null;
 }): Promise<TaskItem> {
   const res = await fetch(`${API_URL}/tasks`, {
     method: "POST",
@@ -233,6 +264,43 @@ export async function deleteHabit(id: number): Promise<void> {
     headers: getAuthHeaders(),
   });
   return handleEmptyResponse(res, "Failed to delete habit");
+}
+
+// --- GOAL API CALLS ---
+export async function fetchGoals(): Promise<GoalItem[]> {
+  const res = await fetch(`${API_URL}/goals`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<GoalItem[]>(res, "Failed to fetch goals");
+}
+
+export async function createGoal(goal: GoalCreateInput): Promise<GoalItem> {
+  const res = await fetch(`${API_URL}/goals`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(goal),
+  });
+  return handleResponse<GoalItem>(res, "Failed to create goal");
+}
+
+export async function updateGoal(
+  id: number,
+  data: GoalUpdateInput,
+): Promise<GoalItem> {
+  const res = await fetch(`${API_URL}/goals/${id}`, {
+    method: "PATCH",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<GoalItem>(res, "Failed to update goal");
+}
+
+export async function deleteGoal(id: number): Promise<void> {
+  const res = await fetch(`${API_URL}/goals/${id}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+  return handleEmptyResponse(res, "Failed to delete goal");
 }
 
 // --- DASHBOARD API CALLS ---
