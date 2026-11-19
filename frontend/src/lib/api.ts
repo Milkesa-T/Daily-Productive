@@ -196,6 +196,86 @@ export async function deleteHabit(id: number): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete habit");
 }
 
+// --- DASHBOARD API CALLS ---
+
+export interface DashboardTaskItem {
+  id: number;
+  title: string;
+  priority_level: string;
+  due_date?: string | null;
+  is_completed: boolean;
+  is_overdue: boolean;
+  goal_id?: number | null;
+  category_id?: number | null;
+}
+
+export interface DashboardHabitItem {
+  id: number;
+  name: string;
+  frequency_type: string;
+  target_count: number;
+  current_streak: number;
+  longest_streak: number;
+  completed_today: boolean;
+  category_id?: number | null;
+}
+
+export interface DashboardGoal {
+  id: number;
+  title: string;
+  progress_percentage: number;
+  total_tasks: number;
+  completed_tasks: number;
+}
+
+export interface DashboardSummary {
+  today: string;
+  tasks: {
+    total_today: number;
+    completed_today: number;
+    overdue_count: number;
+    items: DashboardTaskItem[];
+  };
+  habits: {
+    total_habits: number;
+    completed_today: number;
+    items: DashboardHabitItem[];
+  };
+  goals: DashboardGoal[];
+  weekly_completion_rate: number;
+}
+
+export async function fetchDashboardSummary(): Promise<DashboardSummary> {
+  const res = await fetch(`${API_URL}/dashboard/summary`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error("Failed to fetch dashboard summary");
+  return res.json();
+}
+
+export async function toggleHabitToday(habitId: number): Promise<{
+  id: number;
+  completed_today: boolean;
+  current_streak: number;
+  longest_streak: number;
+  message: string;
+}> {
+  const res = await fetch(`${API_URL}/habits/${habitId}/toggle-today`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error("Failed to toggle habit");
+  return res.json();
+}
+
+export async function fetchHabitHistory(habitId: number): Promise<string[]> {
+  const res = await fetch(`${API_URL}/habits/${habitId}/history`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error("Failed to fetch habit history");
+  return res.json();
+}
+
 // --- RAG / CHAT API CALLS ---
 export interface ChatSource {
   id: number;
