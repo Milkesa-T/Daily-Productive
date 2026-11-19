@@ -418,3 +418,95 @@ export async function askJournal(question: string): Promise<AskJournalResponse> 
   return handleResponse<AskJournalResponse>(res, "Failed to get an answer from the assistant");
 }
 
+// --- JOURNAL CRUD & SEARCH API CALLS ---
+
+export interface JournalSummaryItem {
+  id: number;
+  title?: string | null;
+  snippet: string;
+  created_at: string;
+  updated_at: string;
+  chunks_count: number;
+}
+
+export interface JournalDetailItem {
+  id: number;
+  title?: string | null;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JournalSearchResult {
+  id: number;
+  title?: string | null;
+  content: string;
+  chunk_index: number;
+  similarity: number;
+  distance: number;
+  created_at?: string | null;
+}
+
+export interface JournalSearchResponse {
+  query: string;
+  total_results: number;
+  results: JournalSearchResult[];
+}
+
+export async function fetchJournals(): Promise<JournalSummaryItem[]> {
+  const res = await fetch(`${API_URL}/journal`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<JournalSummaryItem[]>(res, "Failed to fetch journals");
+}
+
+export async function fetchJournalById(id: number): Promise<JournalDetailItem> {
+  const res = await fetch(`${API_URL}/journal/${id}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<JournalDetailItem>(res, "Failed to fetch journal entry");
+}
+
+export async function createJournal(data: {
+  title?: string;
+  content: string;
+}): Promise<JournalDetailItem> {
+  const res = await fetch(`${API_URL}/journal`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<JournalDetailItem>(res, "Failed to create journal entry");
+}
+
+export async function updateJournal(
+  id: number,
+  data: { title?: string; content?: string }
+): Promise<JournalDetailItem> {
+  const res = await fetch(`${API_URL}/journal/${id}`, {
+    method: "PATCH",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<JournalDetailItem>(res, "Failed to update journal entry");
+}
+
+export async function deleteJournal(id: number): Promise<void> {
+  const res = await fetch(`${API_URL}/journal/${id}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+  return handleEmptyResponse(res, "Failed to delete journal entry");
+}
+
+export async function searchJournals(
+  query: string,
+  limit: number = 5
+): Promise<JournalSearchResponse> {
+  const url = `${API_URL}/journal/search?q=${encodeURIComponent(query)}&limit=${limit}`;
+  const res = await fetch(url, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<JournalSearchResponse>(res, "Failed to search journals");
+}
+
