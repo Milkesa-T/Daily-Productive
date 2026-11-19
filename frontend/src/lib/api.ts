@@ -510,3 +510,72 @@ export async function searchJournals(
   return handleResponse<JournalSearchResponse>(res, "Failed to search journals");
 }
 
+// --- REMINDER API CALLS ---
+
+export interface ReminderItem {
+  id: number;
+  title: string;
+  description?: string | null;
+  due_time: string;
+  recurrence: string;
+  is_active: boolean;
+  gcal_event_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReminderCreateInput {
+  title: string;
+  description?: string;
+  due_time: string;
+  recurrence?: string;
+  is_active?: boolean;
+}
+
+export interface ReminderUpdateInput {
+  title?: string;
+  description?: string;
+  due_time?: string;
+  recurrence?: string;
+  is_active?: boolean;
+}
+
+export async function fetchReminders(isActive?: boolean): Promise<ReminderItem[]> {
+  const query = typeof isActive === "boolean" ? `?is_active=${isActive}` : "";
+  const res = await fetch(`${API_URL}/reminders${query}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<ReminderItem[]>(res, "Failed to fetch reminders");
+}
+
+export async function createReminder(
+  data: ReminderCreateInput
+): Promise<ReminderItem> {
+  const res = await fetch(`${API_URL}/reminders`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<ReminderItem>(res, "Failed to create reminder");
+}
+
+export async function updateReminder(
+  id: number,
+  data: ReminderUpdateInput
+): Promise<ReminderItem> {
+  const res = await fetch(`${API_URL}/reminders/${id}`, {
+    method: "PATCH",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<ReminderItem>(res, "Failed to update reminder");
+}
+
+export async function deleteReminder(id: number): Promise<void> {
+  const res = await fetch(`${API_URL}/reminders/${id}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+  return handleEmptyResponse(res, "Failed to delete reminder");
+}
+
