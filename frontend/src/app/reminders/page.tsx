@@ -31,19 +31,27 @@ function RecurrencePill({ recurrence }: { recurrence?: string }) {
   );
 }
 
-// ─── Due Date Helper ────────────────────────────────────────────────────────
+// ─── Due Date Helper (Strict GMT) ──────────────────────────────────────────
 function formatDueTime(isoString: string): { formatted: string; isPast: boolean } {
-  const date = new Date(isoString);
+  const cleanIso = isoString.endsWith("Z") ? isoString : `${isoString}Z`;
+  const date = new Date(cleanIso);
   const now = new Date();
   const isPast = date.getTime() < now.getTime();
 
-  const formatted = date.toLocaleString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  // Strict GMT formatting (matches exact inputted time with zero offset shifting)
+  const year = date.getUTCFullYear();
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const month = monthNames[date.getUTCMonth()];
+  const day = date.getUTCDate();
+  const weekday = dayNames[date.getUTCDay()];
+
+  let hours = date.getUTCHours();
+  const minutes = date.getUTCMinutes().toString().padStart(2, "0");
+  const ampm = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12 || 12;
+
+  const formatted = `${weekday}, ${month} ${day}, ${year} at ${hours}:${minutes} ${ampm} GMT`;
 
   return { formatted, isPast };
 }
@@ -66,10 +74,10 @@ function ReminderModal({ reminder, onClose, onSave }: ReminderModalProps) {
   const [title, setTitle] = useState(reminder?.title ?? "");
   const [description, setDescription] = useState(reminder?.description ?? "");
   
-  // Format to YYYY-MM-DDTHH:mm for datetime-local
+  // Format to YYYY-MM-DDTHH:mm directly in GMT (zero local offset shifting)
   const defaultDue = reminder?.due_time
-    ? new Date(reminder.due_time).toISOString().slice(0, 16)
-    : new Date(Date.now() + 3600000).toISOString().slice(0, 16); // 1 hr from now default
+    ? reminder.due_time.replace("Z", "").slice(0, 16)
+    : new Date(Date.now() + 3600000).toISOString().slice(0, 16);
 
   const [dueTime, setDueTime] = useState(defaultDue);
   const [recurrence, setRecurrence] = useState(reminder?.recurrence ?? "none");
@@ -88,13 +96,16 @@ function ReminderModal({ reminder, onClose, onSave }: ReminderModalProps) {
       return;
     }
 
+    // Strict GMT ISO string with zero timezone additions/subtractions
+    const gmtIso = dueTime.length === 16 ? `${dueTime}:00Z` : (dueTime.endsWith("Z") ? dueTime : `${dueTime}Z`);
+
     setSubmitting(true);
     setError(null);
     try {
       await onSave({
         title: title.trim(),
         description: description.trim() || undefined,
-        due_time: new Date(dueTime).toISOString(),
+        due_time: gmtIso,
         recurrence,
         is_active: isActive,
       });
@@ -156,7 +167,7 @@ function ReminderModal({ reminder, onClose, onSave }: ReminderModalProps) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5 block">
-                Due Date & Time <span className="text-red-400">*</span>
+                Due Date & Time (GMT) <span className="text-red-400">*</span>
               </label>
               <input
                 type="datetime-local"
@@ -165,6 +176,9 @@ function ReminderModal({ reminder, onClose, onSave }: ReminderModalProps) {
                 onChange={(e) => setDueTime(e.target.value)}
                 className="w-full px-3.5 py-2 rounded-xl bg-zinc-800 border border-zinc-700 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
+              <p className="text-[11px] text-zinc-500 mt-1">
+                Held exactly as set in GMT.
+              </p>
             </div>
 
             <div>
